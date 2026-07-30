@@ -2935,6 +2935,7 @@
 
   function startNewTrip() {
     clearSavedTrip();
+    clearCloudBackup();  // trip is done (sent or deliberately discarded)
     trip = newTripState();
     guestGroups = [];
     _addGuestPhoto = null;
@@ -2990,6 +2991,67 @@
   function saveTrip() {
     if (!trip.startTime) return;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(trip)); } catch(e) {}
+    // Cloud safety-net: until Send succeeds this phone is the only holder of
+    // the trip — a deleted app or drowned phone loses everything (happened
+    // 2026-07-30). Throttled fire-and-forget upsert; forced once the trip
+    // has ended so the final state is always captured.
+    backupTripToCloud(!!trip.endTime);
+  }
+
+  const BACKUP_INTERVAL_MS = 120000;   // at most one cloud write per 2 min
+  let _lastBackupAt = 0;
+  let _backupInFlight = false;
+
+  async function backupTripToCloud(force) {
+    if (!trip.startTime) return;
+    if (_backupInFlight) return;
+    if (!force && Date.now() - _lastBackupAt < BACKUP_INTERVAL_MS) return;
+    _backupInFlight = true;
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) return;
+      _lastBackupAt = Date.now();
+      await fetch('/api/trip-backup', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ trip, guestEmails: guestGroups.map(g => g.email).filter(Boolean) }),
+      });
+    } catch (e) { /* offline mid-bay — the next saveTrip retries */ }
+    finally { _backupInFlight = false; }
+  }
+
+  async function clearCloudBackup() {
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) return;
+      await fetch('/api/trip-backup', { method: 'DELETE', headers: { 'Authorization': `Bearer ${session.access_token}` } });
+    } catch (e) {}
+  }
+
+  // Boot-time recovery: no local trip but a cloud backup exists (fresh
+  // install, cleared storage, different device). Offer it back; declining
+  // deletes the backup so the offer doesn't repeat forever.
+  async function restoreTripFromCloud(token) {
+    try {
+      const res = await fetch('/api/trip-backup', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) return false;
+      const body = await res.json();
+      if (!body || !body.trip || !body.trip.startTime) return false;
+      const when = body.updated_at
+        ? new Date(body.updated_at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+        : 'recently';
+      if (!confirm(`Found a cloud backup of a trip (saved ${when}). Restore it?`)) {
+        fetch('/api/trip-backup', { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {});
+        return false;
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(body.trip));
+      if (Array.isArray(body.guestEmails) && body.guestEmails.length) {
+        localStorage.setItem(GUESTS_KEY, JSON.stringify(body.guestEmails));
+      }
+      restoreTrip();
+      toast('Trip restored from cloud backup', 'success');
+      return true;
+    } catch (e) { return false; }
   }
 
   function restoreTrip() {
@@ -3188,6 +3250,8 @@
     const savedTrip = localStorage.getItem(STORAGE_KEY);
     if (savedTrip) {
       restoreTrip();
+    } else if (await restoreTripFromCloud(session.access_token)) {
+      // restored + navigated inside restoreTripFromCloud
     } else if (shouldShowWelcome()) {
       // First-time captain (or anyone who hasn't finished setup) lands on
       // the checklist instead of Start Trip. Once they finish the required
