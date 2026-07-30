@@ -8,6 +8,8 @@
 	<string>Flukelogs uses your location during a trip to track your route and calculate distance traveled.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Flukelogs keeps tracking your route while the screen is locked so your distance and breadcrumb path stay accurate for the whole trip.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Flukelogs uses the microphone when you record a voice note about a trip, which guests can play from your public sightings page.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
