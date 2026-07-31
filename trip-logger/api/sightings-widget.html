@@ -824,6 +824,16 @@ function refreshMarkers() {
   markers.forEach(m => map.removeLayer(m));
   markers.length = 0;
 
+  // While a trip is broadcasting, the map opens clean — just the live boat
+  // and its live sighting dots. Old pins next to the live layer read as two
+  // boats out at once. A visitor who deliberately picks a past trip or a
+  // species still gets those pins.
+  if (liveHidePins && !activeTripKey && !activeFilter) {
+    const hint = document.getElementById('map-hint');
+    if (hint) hint.textContent = 'Live trip in progress — click a past trip to see its pins';
+    return;
+  }
+
   // Trip-date and species selection both hard-filter the pins — when a
   // species is active every other species disappears so the picked one
   // stands alone (the older dimmed-out version looked muddy on the light
@@ -1313,6 +1323,13 @@ function renderNowBanner(data) {
 const LIVE_POLL_MS = 60000;
 let liveBoatMarker = null;
 let liveTrackLine = null;
+let liveSightingMarkers = [];
+// While broadcasting, refreshMarkers() suppresses past-trip pins unless the
+// visitor explicitly selects a trip or species.
+let liveHidePins = false;
+// The trip the widget auto-selected at boot (vs one the visitor clicked) —
+// only an auto-selection is cleared when a broadcast starts mid-visit.
+let autoSelectedTripKey = null;
 // One-shot per broadcast: widen the view to include the boat the first time
 // it appears (it may be well outside the last trip's pins the map opens on).
 // Never re-fires on later polls, so visitors can pan/zoom freely after.
@@ -1327,6 +1344,8 @@ function fmtClock(iso) {
 function clearLiveMapLayers() {
   if (liveBoatMarker) { map.removeLayer(liveBoatMarker); liveBoatMarker = null; }
   if (liveTrackLine)  { map.removeLayer(liveTrackLine);  liveTrackLine = null; }
+  liveSightingMarkers.forEach(m => map.removeLayer(m));
+  liveSightingMarkers = [];
 }
 
 function renderLive(live) {
@@ -1343,16 +1362,30 @@ function renderLive(live) {
       banner.style.display = 'none';
       renderNowBanner(allData);
     }
-    if (map) clearLiveMapLayers();
+    if (map) {
+      clearLiveMapLayers();
+      if (liveHidePins) { liveHidePins = false; refreshMarkers(); } // pins return
+    }
     liveViewFitted = false; // next broadcast gets its own one-shot fit
     return;
   }
 
-  // Going live mid-visit: cancel any auto-playing past-trip replay — a
-  // replaying old track next to the live boat reads as two boats out at
-  // once. One-shot on the transition; a replay the visitor starts by hand
-  // afterwards is left alone.
-  if (!banner.classList.contains('is-live') && typeof stopReplay === 'function') stopReplay();
+  // Going live (at boot or mid-visit): cancel any auto-playing past-trip
+  // replay, drop the auto-selected past trip, and clear its pins — the live
+  // boat should be alone on the map. One-shot on the transition; anything
+  // the visitor picked by hand (trip, species, manual replay) is left alone.
+  if (!banner.classList.contains('is-live')) {
+    if (typeof stopReplay === 'function') stopReplay();
+    if (map) {
+      if (activeTripKey && activeTripKey === autoSelectedTripKey) {
+        activeTripKey = null;
+        document.querySelectorAll('.trip-date-header').forEach(h => h.classList.remove('active-trip'));
+        document.querySelectorAll('.trip-card').forEach(c => c.classList.remove('selected', 'hidden'));
+      }
+      liveHidePins = true;
+      refreshMarkers();
+    }
+  }
   banner.classList.add('is-live');
   label.textContent = 'Live · On the water now';
   document.getElementById('now-species').textContent =
@@ -1365,6 +1398,25 @@ function renderLive(live) {
 
   if (!map) return;
   clearLiveMapLayers();
+  // Live sighting dots — logged mid-trip, published with the same delay +
+  // fuzz as the boat. Same species colors as the permanent pins.
+  (live.sightings || []).forEach(s => {
+    if (!Number.isFinite(+s.lat) || !Number.isFinite(+s.lng)) return;
+    const meta = sm(s.species);
+    const m = meta.isSplit
+      ? L.marker([+s.lat, +s.lng], { icon: createOrcaIcon(), zIndexOffset: 900 })
+      : L.circleMarker([+s.lat, +s.lng], {
+          radius: 8, fillColor: meta.color, color: meta.borderColor || '#000',
+          weight: 2, fillOpacity: 0.95,
+        });
+    const when = fmtClock(s.t);
+    m.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
+      <strong style="font-size:13px;">${meta.icon} ${s.species || 'Sighting'}</strong><br>
+      ${s.count ? `Count: <strong>${s.count}</strong><br>` : ''}Spotted ${when || 'just now'} &middot; live
+    </div>`);
+    m.addTo(map);
+    liveSightingMarkers.push(m);
+  });
   const pts = (live.track || []).map(p => [+p.lat, +p.lng]);
   if (pts.length > 1) {
     liveTrackLine = L.polyline(pts, {
@@ -2298,11 +2350,13 @@ function applyInitialTripFromUrl() {
 
     // No shared-link trip in the URL? Default to the newest trip so the
     // map opens focused on one trip instead of every pin ever — the full
-    // feed is still scrollable for visitors who want older trips.
-    if (!activeTripKey && allData.length) {
+    // feed is still scrollable for visitors who want older trips. Skipped
+    // while a trip is broadcasting: the live boat + live dots own the map,
+    // and yesterday's pins next to them read as a second boat.
+    if (!activeTripKey && allData.length && !liveNow) {
       const newest = groupByTrip(allData)[0];
       if (newest) {
-        activeTripKey = newest[0];
+        activeTripKey = autoSelectedTripKey = newest[0];
         const header = document.querySelector('.trip-date-header[data-trip="' + activeTripKey + '"]');
         if (header) {
           header.classList.add('active-trip');

@@ -72,7 +72,7 @@ async function getLiveBlock(operator, showMap) {
 
   const rows = await pgGet(
     `live_trips?operator_id=eq.${operator.id}&ended_at=is.null` +
-    `&select=started_at,last_seen_at,status_species,status_at,track` +
+    `&select=started_at,last_seen_at,status_species,status_at,track,sightings` +
     `&order=last_seen_at.desc&limit=1`
   );
   const row = rows && rows[0];
@@ -93,6 +93,7 @@ async function getLiveBlock(operator, showMap) {
     delay_minutes: delayMin,
     position: null,
     track: [],
+    sightings: [],
   };
   if (!showMap) return live; // status only — same GPS opt-out as sightings
 
@@ -113,6 +114,21 @@ async function getLiveBlock(operator, showMap) {
     live.track.push(pt);
   }
   live.position = live.track[live.track.length - 1] || null;
+
+  // Mid-trip sightings become live dots — same delay + fuzz as the boat,
+  // since each dot says where the animals are right now.
+  for (const s of (Array.isArray(row.sightings) ? row.sightings : [])) {
+    const t = Date.parse(s && s.t);
+    if (!Number.isFinite(t) || t > cutoff) continue;
+    if (!Number.isFinite(+s.lat) || !Number.isFinite(+s.lng)) continue;
+    live.sightings.push({
+      species: s.species || null,
+      count: Number.isFinite(+s.count) ? +s.count : null,
+      lat: snap(+s.lat),
+      lng: snap(+s.lng),
+      t: s.t,
+    });
+  }
   return live;
 }
 
