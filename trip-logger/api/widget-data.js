@@ -29,8 +29,28 @@
 // `tracks` is the continuous GPS breadcrumb per trip (Phase 2). When
 // show_map_on_widget = false, tracks is empty AND lat/lng are stripped from
 // sightings — same opt-out applies to both.
+//
+// `live` is the in-progress-trip block (migration 0021). The app broadcasts
+// exact points into live_trips via /api/live-trip; THIS endpoint is the only
+// public reader, and it applies the operator's privacy transform before
+// anything leaves the server:
+//   - delay: only track points older than live_delay_minutes are published,
+//     so the shown position always trails the boat (default 2 minutes);
+//   - fuzz:  published lat/lng are snapped to a live_fuzz_deg grid
+//     (0.01 deg ~= 0.6 nm), so the exact spot is never recoverable.
+// The status line ("watching X" / "searching") carries no location and is
+// served whenever the live layer is on; position/track additionally require
+// show_map_on_widget. `?live=1` returns just { live } — the widget polls
+// that cheaply without re-pulling the whole feed.
 
 const FEED_LIMIT = 100;
+
+// A broadcast whose heartbeat stopped this long ago is treated as over —
+// covers lost signal / a trip ended without a clean End Trip tap, so the
+// widget never sits on a stale "currently watching."
+const LIVE_STALE_MINUTES = 10;
+// A sighting older than this reads as "searching," not "watching."
+const WATCHING_WINDOW_MINUTES = 15;
 
 async function pgGet(pathAndQuery) {
   const url = process.env.SUPABASE_URL;
@@ -43,6 +63,58 @@ async function pgGet(pathAndQuery) {
   return res.json();
 }
 
+// Builds the public `live` block from the operator's newest active broadcast.
+// Returns null when the layer is off, nothing is live, or the heartbeat went
+// stale. All delay/fuzz math happens here — raw live_trips rows never leave.
+async function getLiveBlock(operator, showMap) {
+  if (!operator.live_widget_enabled) return null;
+
+  const rows = await pgGet(
+    `live_trips?operator_id=eq.${operator.id}&ended_at=is.null` +
+    `&select=started_at,last_seen_at,status_species,status_at,track` +
+    `&order=last_seen_at.desc&limit=1`
+  );
+  const row = rows && rows[0];
+  if (!row) return null;
+
+  const now = Date.now();
+  if (now - Date.parse(row.last_seen_at) > LIVE_STALE_MINUTES * 60000) return null;
+
+  const delayMin = Math.max(0, +operator.live_delay_minutes || 0);
+  const watching = !!(row.status_species && row.status_at &&
+    now - Date.parse(row.status_at) <= WATCHING_WINDOW_MINUTES * 60000);
+
+  const live = {
+    active: true,
+    started_at: row.started_at,
+    species: row.status_species || null,
+    watching,
+    delay_minutes: delayMin,
+    position: null,
+    track: [],
+  };
+  if (!showMap) return live; // status only — same GPS opt-out as sightings
+
+  // Publish only points that have aged past the delay, snapped to the fuzz
+  // grid. Consecutive points landing in the same grid cell collapse to one,
+  // so the polyline stays a path instead of a stutter of duplicates.
+  const fuzz = +operator.live_fuzz_deg > 0 ? +operator.live_fuzz_deg : 0.01;
+  const snap = v => +(Math.round(v / fuzz) * fuzz).toFixed(6);
+  const cutoff = now - delayMin * 60000;
+  const points = Array.isArray(row.track) ? row.track : [];
+  for (const p of points) {
+    const t = Date.parse(p && p.t);
+    if (!Number.isFinite(t) || t > cutoff) continue;
+    if (!Number.isFinite(+p.lat) || !Number.isFinite(+p.lng)) continue;
+    const pt = { lat: snap(+p.lat), lng: snap(+p.lng), t: p.t };
+    const prev = live.track[live.track.length - 1];
+    if (prev && prev.lat === pt.lat && prev.lng === pt.lng) { prev.t = pt.t; continue; }
+    live.track.push(pt);
+  }
+  live.position = live.track[live.track.length - 1] || null;
+  return live;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -53,16 +125,20 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
   if (req.method !== 'GET') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
-  const empty = { sightings: [], audio: [], photos: [], show_map_on_widget: true };
+  const liveOnly = !!(req.query && req.query.live);
+  const empty = liveOnly
+    ? { live: null }
+    : { sightings: [], audio: [], photos: [], live: null, show_map_on_widget: true };
 
   try {
     const slug = req.query && req.query.op;
     if (!slug) { res.status(200).json(empty); return; }
 
-    // Resolve operator server-side from the public slug. We only need the id
-    // and the map toggle here.
+    // Resolve operator server-side from the public slug. We only need the id,
+    // the map toggle, and the live-layer knobs here.
     const ops = await pgGet(
-      `operators?slug=eq.${encodeURIComponent(String(slug))}&select=id,show_map_on_widget&limit=1`
+      `operators?slug=eq.${encodeURIComponent(String(slug))}` +
+      `&select=id,show_map_on_widget,live_widget_enabled,live_delay_minutes,live_fuzz_deg&limit=1`
     );
     const operator = ops && ops[0];
     if (!operator || !operator.id) { res.status(200).json(empty); return; }
@@ -70,7 +146,14 @@ module.exports = async function handler(req, res) {
     const operatorId = operator.id;
     const showMap = operator.show_map_on_widget !== false;
 
-    const [sightings, audio, photos] = await Promise.all([
+    // Poll fast-path: the widget refreshes the live block every minute; skip
+    // the full feed queries and return just { live }.
+    if (liveOnly) {
+      res.status(200).json({ live: await getLiveBlock(operator, showMap) });
+      return;
+    }
+
+    const [sightings, audio, photos, live] = await Promise.all([
       pgGet(
         `sightings?operator_id=eq.${operatorId}` +
         `&select=trip_id,trip_part,trip_date,sighting_time,species,count,lat,lng,depth_meters,created_at` +
@@ -88,6 +171,7 @@ module.exports = async function handler(req, res) {
         `&select=id,trip_id,photo_url,sort_order` +
         `&order=trip_date.desc,sort_order.asc,created_at.asc&limit=600`
       ),
+      getLiveBlock(operator, showMap),
     ]);
 
     // Enforce the GPS opt-out server-side: when the operator hides their map,
@@ -137,6 +221,7 @@ module.exports = async function handler(req, res) {
       audio: audio || [],
       photos: photos || [],
       tracks,
+      live: live || null,
       show_map_on_widget: showMap,
     });
   } catch (err) {
