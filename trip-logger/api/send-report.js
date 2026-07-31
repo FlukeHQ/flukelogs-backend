@@ -862,7 +862,12 @@ module.exports = async function handler(req, res) {
   configureMailchimp(operator);
 
   const { tripData, tripDate, guestEmails, socialCardData, captainCardData } = req.body;
-  if (!tripData || (!guestEmails && !Array.isArray(req.body.guests))) {
+  // Log-only: write the trip (sightings + track) and send nothing. Guest
+  // delivery now happens in Flukesend, so ending a trip must not require an
+  // email address. The full-send path below stays intact for old cached
+  // clients until they pick up the new build.
+  const isLogOnly = req.body.mode === 'log-only';
+  if (!tripData || (!isLogOnly && !guestEmails && !Array.isArray(req.body.guests))) {
     return res.status(400).json({ error: 'Missing tripData or guests' });
   }
   // "Add a guest" resend: deliver the recap to a guest the captain forgot,
@@ -912,13 +917,29 @@ module.exports = async function handler(req, res) {
     }))
     .filter(g => emailRegex.test(g.email));
   const validEmails = validGuests.map(g => g.email);
-  if (validEmails.length === 0) return res.status(400).json({ error: 'No valid email addresses provided' });
+  if (!isLogOnly && validEmails.length === 0) return res.status(400).json({ error: 'No valid email addresses provided' });
 
   try {
     // Fetch bathymetric depth for each sighting first so the PDF and
     // Supabase row both pick it up. Lookups run in parallel and are
     // capped at 3s each, so this adds at most ~3s to the trip end flow.
     await attachDepthsToSightings(tripData.sightings);
+
+    // Log-only ends here: the trip is on the widget, nobody gets email.
+    // Depths are attached above so the sighting rows match a full send's.
+    if (isLogOnly) {
+      await saveToSupabase(tripData, operatorId);
+      saveTrackToSupabase(tripData.track, operatorId, tripData.tripId)
+        .catch(e => console.error('saveTrackToSupabase background error:', e.message));
+      const speciesCount = new Set((tripData.sightings || []).map(s => s.species)).size;
+      const animalCount = (tripData.sightings || []).reduce((sum, s) => sum + (Number(s.count) || 0), 0);
+      return res.status(200).json({
+        success: true,
+        trip_id: tripData.tripId,
+        logged: { species: speciesCount, animals: animalCount },
+        message: 'Trip logged',
+      });
+    }
 
     // One PDF per distinct photo. Guests without their own photo share the
     // trip-photo PDF (tripData.photoData — may itself be absent). Generated
