@@ -1871,7 +1871,12 @@
     // a button updates that hidden input's value and the .on visual state.
     document.querySelectorAll('.seg').forEach(seg => {
       const targetId = seg.dataset.target;
-      const target = targetId && document.getElementById(targetId);
+      // Only segs that declare a data-target get the shared radio behavior.
+      // The roster pickers (boat / departure / crew) manage their own state,
+      // and crew is a multi-select — this handler's remove-.on-from-all
+      // sweep was collapsing it to one highlighted chip per click.
+      if (!targetId) return;
+      const target = document.getElementById(targetId);
       // Sync the initially-on button to the hidden input (handles "Good" default)
       const initial = seg.querySelector('button.on');
       if (initial && target) target.value = initial.dataset.value || initial.textContent.trim();
@@ -2198,7 +2203,7 @@
       const seg = document.getElementById('crewSeg');
       if (seg) {
         seg.innerHTML = crew.map(c =>
-          `<button type="button" data-crew="${escapeHtml(c.name)}" class="${selCrew.includes(c.name) ? 'on' : ''}">${escapeHtml(c.name)}</button>`).join('');
+          `<button type="button" data-crew="${escapeHtml(c.name)}" title="${escapeHtml((c.roles || []).join(', '))}" class="${selCrew.includes(c.name) ? 'on' : ''}">${escapeHtml(c.name)}</button>`).join('');
         seg.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
           const name = btn.dataset.crew;
           if (selCrew.includes(name)) selCrew = selCrew.filter(n => n !== name);
