@@ -26,18 +26,26 @@ async function getOperatorIdForUser(userId) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY;
   if (!url || !key || !userId) return null;
-  try {
-    const res = await fetch(
-      `${url}/rest/v1/operator_users?user_id=eq.${userId}&select=operator_id&limit=1`,
-      { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
-    );
-    if (!res.ok) return null;
-    const rows = await res.json();
-    return (rows[0] && rows[0].operator_id) || null;
-  } catch (e) {
-    console.error('getOperatorIdForUser error:', e.message);
-    return null;
+  // Membership lives in two tables since the Flukesend merge: operator_users
+  // is the logbook's own roster, operator_members is Flukesend's. Checking
+  // both means an existing Flukesend login — a Princess photographer, say —
+  // opens the boat app with zero provisioning. operator_users wins when a
+  // user somehow appears in both.
+  const tables = ['operator_users', 'operator_members'];
+  for (const table of tables) {
+    try {
+      const res = await fetch(
+        `${url}/rest/v1/${table}?user_id=eq.${userId}&select=operator_id&limit=1`,
+        { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
+      );
+      if (!res.ok) continue;
+      const rows = await res.json();
+      if (rows[0] && rows[0].operator_id) return rows[0].operator_id;
+    } catch (e) {
+      console.error(`getOperatorIdForUser (${table}) error:`, e.message);
+    }
   }
+  return null;
 }
 
 async function getUserProfile(userId) {
