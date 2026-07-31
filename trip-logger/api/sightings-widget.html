@@ -1389,7 +1389,7 @@ function renderLive(live) {
     if (!liveViewFitted) {
       liveViewFitted = true;
       const ll = L.latLng(+live.position.lat, +live.position.lng);
-      if (!map.getBounds().contains(ll)) {
+      if (!map.getBounds().contains(ll) && boatNearGrounds(ll)) {
         map.flyToBounds(map.getBounds().extend(ll), { padding: [40, 40], maxZoom: map.getZoom() });
       }
     }
@@ -1420,15 +1420,35 @@ function updateLiveOverlay() {
   }
 }
 
-// Frame everything the widget knows about — every trip's pins plus the live
-// boat and its track. For a bay operator this lands on the whole-bay view
-// (Santa Cruz down to Monterey) that reads well on a TV.
-function fitFullView() {
-  if (!map) return;
+function pinBounds() {
   const b = L.latLngBounds([]);
   allData.forEach(s => { if (s.lat && s.lng) b.extend([+s.lat, +s.lng]); });
-  if (liveBoatMarker) b.extend(liveBoatMarker.getLatLng());
-  if (liveTrackLine) b.extend(liveTrackLine.getBounds());
+  return b;
+}
+
+// True when the live boat is near the operator's sighting grounds. A boat
+// far away — captain testing from home, app left running on the drive back —
+// still gets its marker, but must never steer the map's framing: auto-fits
+// that include it would drag every visitor's view off to the middle of
+// nowhere.
+function boatNearGrounds(ll) {
+  const b = pinBounds();
+  if (!b.isValid()) return true; // no pins yet — nothing to protect
+  const span = map.distance(b.getNorthWest(), b.getSouthEast());
+  return map.distance(b.getCenter(), ll) <= Math.max(span * 2, 60000);
+}
+
+// Frame everything the widget knows about — every trip's pins plus the live
+// boat and its track (when it's actually out on the grounds). For a bay
+// operator this lands on the whole-bay view (Santa Cruz down to Monterey)
+// that reads well on a TV.
+function fitFullView() {
+  if (!map) return;
+  const b = pinBounds();
+  if (liveBoatMarker && boatNearGrounds(liveBoatMarker.getLatLng())) {
+    b.extend(liveBoatMarker.getLatLng());
+    if (liveTrackLine) b.extend(liveTrackLine.getBounds());
+  }
   if (b.isValid()) map.fitBounds(b, { padding: [60, 60] });
 }
 
@@ -1450,7 +1470,19 @@ function setMapFull(on) {
   updateLiveOverlay();
 }
 
-function toggleMapFull() { setMapFull(!mapIsFull); }
+function toggleMapFull() {
+  // Embedded in an iframe that doesn't grant fullscreen (no allowfullscreen
+  // attribute on the host page): taking over the iframe just letterboxes the
+  // map inside the host layout. Break out to the standalone widget in a new
+  // tab instead — ?fullmap=1 re-enters full-map mode there on load.
+  if (!mapIsFull && window.parent !== window && !document.fullscreenEnabled) {
+    const u = new URL(window.location.href);
+    u.searchParams.set('fullmap', '1');
+    window.open(u.toString(), '_blank');
+    return;
+  }
+  setMapFull(!mapIsFull);
+}
 
 // Leaving real fullscreen via Esc/system UI must also unwind the takeover.
 document.addEventListener('fullscreenchange', () => {
@@ -2285,6 +2317,13 @@ function applyInitialTripFromUrl() {
     // two boats out at once.
     if (activeTripKey && !liveNow) {
       replayTrip(activeTripKey, { silent: true }).catch(() => {});
+    }
+
+    // Arrived via the embed's full-screen breakout (?fullmap=1): enter the
+    // full-map takeover immediately. True browser fullscreen still needs a
+    // user gesture — the expand button is right there for that.
+    if (map && new URLSearchParams(window.location.search).get('fullmap')) {
+      setMapFull(true);
     }
 
     sendHeight();
