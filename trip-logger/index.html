@@ -3546,7 +3546,7 @@
     showLogoPreview('settingsLogoUrlEmailPreview', cfg.logo_url_email);
     document.getElementById('settingsShowMapOnWidget').checked = cfg.show_map_on_widget !== false;
     document.getElementById('settingsWidgetHostUrl').value = cfg.widget_host_url || '';
-    populateEmbedCode(cfg.slug);
+    populateEmbedCode(cfg);
     updateEmbedShareHint();
     setSettingsStatusIndicators(cfg);
   }
@@ -3609,7 +3609,8 @@
   // Renders the iframe + auto-resize script the operator copy-pastes into
   // their website. The widget already postMessages its scrollHeight on every
   // render; the script in the snippet listens for that and resizes the iframe.
-  function populateEmbedCode(slug) {
+  function populateEmbedCode(cfg) {
+    const slug = cfg && cfg.slug;
     const ta = document.getElementById('settingsEmbedCode');
     const preview = document.getElementById('settingsEmbedPreview');
     if (!ta || !preview) return;
@@ -3620,10 +3621,17 @@
       preview.style.pointerEvents = 'none';
       return;
     }
-    // Use the running app's origin so the embed code reflects whichever
-    // domain the operator is viewing Settings from (works on preview deploys
-    // and any future custom domain without code changes).
-    const src = `${window.location.origin}/api/sightings?op=${encodeURIComponent(slug)}`;
+    // Prefer the operator's branded standalone widget domain (admin-set)
+    // so the embed — and everything the widget links back to — lives on
+    // their domain. Fall back to the running app's origin, which keeps
+    // preview deploys and unconfigured operators working.
+    const base = cfg.widget_standalone_url
+      ? `${cfg.widget_standalone_url.replace(/\/+$/, '')}/sightings`
+      : `${window.location.origin}/api/sightings`;
+    const src = `${base}?op=${encodeURIComponent(slug)}`;
+    // allowfullscreen matters: it lets the widget's expand button take the
+    // map truly full screen in place. Without it the button falls back to
+    // opening the standalone page in a new tab.
     ta.value =
 `<!-- Sightings Log -->
 <iframe class="sightings-widget-embed"
@@ -3631,7 +3639,8 @@
   width="100%" height="800"
   style="border:0; max-width:860px; display:block; margin:0 auto;"
   loading="lazy" title="Sightings Log"
-  allow="web-share; clipboard-write"></iframe>
+  allow="fullscreen; web-share; clipboard-write"
+  allowfullscreen></iframe>
 <script>
 (function() {
   // Forward ?trip= from this page's URL into the iframe src so shared

@@ -55,6 +55,9 @@ function operatorSettingsView(operator) {
     has_mailchimp_api_key:    !!operator.mailchimp_api_key,
     show_map_on_widget:       operator.show_map_on_widget !== false,
     widget_host_url:          operator.widget_host_url || null,
+    // Read-only here (admin-managed): branded domain serving the widget
+    // standalone. Settings uses it to generate the embed snippet's src.
+    widget_standalone_url:    operator.widget_standalone_url || null,
   };
 }
 
