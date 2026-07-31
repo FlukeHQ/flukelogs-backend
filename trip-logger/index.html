@@ -1404,6 +1404,22 @@
         <p id="tripGalleryStatus" style="font-size:13px;color:var(--text-muted);margin-top:8px;"></p>
       </div>
 
+      <!-- Danger zone: removes the trip everywhere — widget, map, audio,
+           photos. Same type-to-confirm pattern as deleting a Flukesend
+           send, so one habit covers both products. -->
+      <div class="field" id="tripDeleteZone" style="margin-top:18px;border-top:1px solid var(--border,#23252b);padding-top:16px;">
+        <label>Danger zone</label>
+        <button class="btn btn-danger" type="button" id="tripDeleteBtn" onclick="revealTripDelete()">Delete this trip</button>
+        <div id="tripDeleteConfirm" style="display:none;">
+          <p style="font-size:12.5px;color:var(--text-muted);margin:10px 0 8px;line-height:1.5;">This removes the trip from your sightings widget along with its route, audio note, and photos. It cannot be undone. Type <strong>delete</strong> to confirm.</p>
+          <input type="text" id="tripDeleteInput" placeholder="delete" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button class="btn btn-danger" type="button" id="tripDeleteGo" onclick="confirmTripDelete()">Delete trip</button>
+            <button class="btn btn-outline" type="button" onclick="hideTripDelete()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
       <button class="btn btn-outline" type="button" onclick="showScreen('screenPastTrips')">Back</button>
     </div>
   </div>
@@ -4950,6 +4966,47 @@
     }).join('');
   }
 
+  // ── Delete trip (type-to-confirm) ──────────────────────────────────
+  function revealTripDelete() {
+    document.getElementById('tripDeleteBtn').style.display = 'none';
+    document.getElementById('tripDeleteConfirm').style.display = '';
+    document.getElementById('tripDeleteInput').value = '';
+  }
+
+  function hideTripDelete() {
+    document.getElementById('tripDeleteBtn').style.display = '';
+    document.getElementById('tripDeleteConfirm').style.display = 'none';
+    document.getElementById('tripDeleteInput').value = '';
+  }
+
+  async function confirmTripDelete() {
+    if (document.getElementById('tripDeleteInput').value.trim().toLowerCase() !== 'delete') {
+      return toast('Type "delete" to confirm', 'error');
+    }
+    if (!currentAudioTripId) return toast('This trip cannot be deleted', 'error');
+    const btn = document.getElementById('tripDeleteGo');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Deleting…';
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) return handleLogout();
+      const res = await fetch(`/api/operator/trips?tripId=${encodeURIComponent(currentAudioTripId)}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Delete failed');
+      toast('Trip deleted', 'success');
+      openPastTrips();  // back to the (now refreshed) list
+    } catch (err) {
+      console.error(err);
+      toast(err.message || 'Delete failed', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = 'Delete trip';
+    }
+  }
+
   async function openTripAudio(tripId, date, part) {
     currentAudioTripId = tripId;
     currentAudioDate = date;
@@ -4966,6 +5023,11 @@
     document.getElementById('tripAudioStatus').textContent = '';
     document.getElementById('tripAudioRecBtn').textContent = '🎤 Tap to record';
     document.getElementById('tripAudioRecBtn').disabled = false;
+    // Reset the delete confirm each visit; hide the zone entirely for
+    // pre-trip_id legacy trips, which the server has no way to delete as
+    // one unit.
+    hideTripDelete();
+    document.getElementById('tripDeleteZone').style.display = tripId ? '' : 'none';
 
     // Look up existing audio for this date
     try {
