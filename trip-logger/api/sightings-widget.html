@@ -788,6 +788,13 @@ if (SHOW_MAP) {
   map = L.map('sightings-map', { center: [36.803, -121.787], zoom: 10, zoomControl: true, scrollWheelZoom: false, attributionControl: false });
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16 }).addTo(map);
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, opacity: 0.7 }).addTo(map);
+  // Keep Leaflet's notion of its size synced with the container at all times.
+  // The full-screen transition animates the container over several hundred ms
+  // (longer on macOS), so any single post-toggle invalidateSize() measures a
+  // mid-transition width and leaves the map rendering as a narrow strip.
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => map.invalidateSize()).observe(document.getElementById('sightings-map'));
+  }
 } else {
   const wrap = document.querySelector('.map-wrap');
   if (wrap) wrap.remove();
@@ -1341,6 +1348,11 @@ function renderLive(live) {
     return;
   }
 
+  // Going live mid-visit: cancel any auto-playing past-trip replay — a
+  // replaying old track next to the live boat reads as two boats out at
+  // once. One-shot on the transition; a replay the visitor starts by hand
+  // afterwards is left alone.
+  if (!banner.classList.contains('is-live') && typeof stopReplay === 'function') stopReplay();
   banner.classList.add('is-live');
   label.textContent = 'Live · On the water now';
   document.getElementById('now-species').textContent =
@@ -1408,6 +1420,18 @@ function updateLiveOverlay() {
   }
 }
 
+// Frame everything the widget knows about — every trip's pins plus the live
+// boat and its track. For a bay operator this lands on the whole-bay view
+// (Santa Cruz down to Monterey) that reads well on a TV.
+function fitFullView() {
+  if (!map) return;
+  const b = L.latLngBounds([]);
+  allData.forEach(s => { if (s.lat && s.lng) b.extend([+s.lat, +s.lng]); });
+  if (liveBoatMarker) b.extend(liveBoatMarker.getLatLng());
+  if (liveTrackLine) b.extend(liveTrackLine.getBounds());
+  if (b.isValid()) map.fitBounds(b, { padding: [60, 60] });
+}
+
 function setMapFull(on) {
   const wrap = document.querySelector('.map-wrap');
   if (!wrap || !map) return;
@@ -1418,12 +1442,11 @@ function setMapFull(on) {
   } else if (document.fullscreenElement) {
     document.exitFullscreen().catch(() => {});
   }
-  // Leaflet needs a nudge after the container resizes; re-center on the boat
-  // so the kiosk view opens on the live action when there is any.
-  setTimeout(() => {
-    map.invalidateSize();
-    if (on && liveBoatMarker) map.panTo(liveBoatMarker.getLatLng());
-  }, 260);
+  // The ResizeObserver keeps tiles rendering through the size transition;
+  // once the container settles, frame the whole picture. Two passes because
+  // the browser's full-screen animation can outlast the first.
+  if (on) { setTimeout(fitFullView, 350); setTimeout(fitFullView, 1100); }
+  else setTimeout(() => map.invalidateSize(), 260);
   updateLiveOverlay();
 }
 
@@ -2226,7 +2249,9 @@ function applyInitialTripFromUrl() {
     refreshMarkers();
     renderFeed(allData);
     // Live layer: paint from the feed we already have, then keep it fresh.
-    loadWidgetData().then(d => renderLive(d && d.live));
+    const wd = await loadWidgetData();
+    const liveNow = !!(wd && wd.live && wd.live.active);
+    renderLive(wd && wd.live);
     setInterval(pollLive, LIVE_POLL_MS);
     document.getElementById('status-text').textContent =
       allData.length ? fmtDottedDate(allData[0].trip_date) : 'No data yet';
@@ -2255,8 +2280,10 @@ function applyInitialTripFromUrl() {
     // Auto-play the replay animation for whichever trip ended up selected
     // — shared-link visitors see the shared trip play, first-time visitors
     // see the most recent trip. Silent so a trip too small to replay just
-    // sits there instead of toasting on page load.
-    if (activeTripKey) {
+    // sits there instead of toasting on page load. Skipped while a trip is
+    // broadcasting: a replaying past track next to the live boat reads as
+    // two boats out at once.
+    if (activeTripKey && !liveNow) {
       replayTrip(activeTripKey, { silent: true }).catch(() => {});
     }
 
