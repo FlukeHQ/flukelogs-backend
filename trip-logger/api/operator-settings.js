@@ -15,27 +15,22 @@ const { authenticate } = require('../lib/auth');
 const { getOperator } = require('../lib/operators');
 
 // Single source of truth for what the operator can edit themselves. Mirror
-// of the user's product spec: logo, review link, species list, from email +
-// Gmail app password, Mailchimp credentials.
+// of the user's product spec: logo, species list, widget knobs. Email and
+// Mailchimp credentials left this list when guest email moved to Flukesend;
+// the columns still exist but nothing edits or sends with them.
 const OPERATOR_EDITABLE = [
   'logo_url',
   'logo_url_email',
   'tagline',
-  'review_url',
   'species_list',
-  'from_email',
-  'gmail_app_password',
-  'mailchimp_api_key',
-  'mailchimp_audience_id',
-  'mailchimp_server_prefix',
   'show_map_on_widget',
   'widget_host_url',
 ];
 
 // Sensitive fields where an empty-string PATCH means "keep current value."
-// The captain types into a masked input, so an empty input is the natural
-// "I'm not changing this" signal.
-const SECRET_FIELDS = new Set(['mailchimp_api_key', 'gmail_app_password']);
+// Empty now that the email credentials are gone; kept so a future secret
+// field slots in without re-plumbing the PATCH handler.
+const SECRET_FIELDS = new Set();
 
 function operatorSettingsView(operator) {
   if (!operator) return null;
@@ -46,13 +41,7 @@ function operatorSettingsView(operator) {
     logo_url:                 operator.logo_url,
     logo_url_email:           operator.logo_url_email,
     tagline:                  operator.tagline || null,
-    review_url:               operator.review_url,
     species_list:             operator.species_list || [],
-    from_email:               operator.from_email,
-    has_gmail_app_password:   !!operator.gmail_app_password,
-    mailchimp_audience_id:    operator.mailchimp_audience_id,
-    mailchimp_server_prefix:  operator.mailchimp_server_prefix,
-    has_mailchimp_api_key:    !!operator.mailchimp_api_key,
     show_map_on_widget:       operator.show_map_on_widget !== false,
     widget_host_url:          operator.widget_host_url || null,
     // Read-only here (admin-managed): branded domain serving the widget

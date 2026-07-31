@@ -1285,48 +1285,9 @@
       </div>
     </details>
 
-    <details class="section section-collapsible">
-      <summary>
-        <div class="section-label">Email</div>
-        <span class="section-status" id="settingsEmailStatus">&mdash;</span>
-      </summary>
-      <div class="section-body">
-        <div class="field">
-          <label>"From" Email Address</label>
-          <input type="email" id="settingsFromEmail" autocapitalize="none" autocorrect="off">
-        </div>
-        <div class="field">
-          <label>Gmail App Password <span id="settingsGmailPwdHint" style="color:var(--text-dim);font-weight:500;text-transform:none;letter-spacing:0;">(leave blank to keep current)</span></label>
-          <input type="password" id="settingsGmailPwd" autocomplete="off" placeholder="paste new 16-char password to replace">
-          <p style="font-size:12px;color:var(--text-dim);margin:6px 0 0;line-height:1.5;">Required for sending trip reports. Generate at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="color:var(--text);">myaccount.google.com/apppasswords</a> &mdash; 16 chars, no spaces.</p>
-        </div>
-        <div class="field">
-          <label>Review URL</label>
-          <input type="url" id="settingsReviewUrl" placeholder="https://…/reviews">
-        </div>
-      </div>
-    </details>
-
-    <details class="section section-collapsible">
-      <summary>
-        <div class="section-label">Mailchimp</div>
-        <span class="section-status" id="settingsMailchimpStatus">&mdash;</span>
-      </summary>
-      <div class="section-body">
-        <div class="field">
-          <label>API Key <span id="settingsMailchimpKeyHint" style="color:var(--text-dim);font-weight:500;text-transform:none;letter-spacing:0;">(leave blank to keep current)</span></label>
-          <input type="password" id="settingsMailchimpKey" autocomplete="off" placeholder="paste new key to replace">
-        </div>
-        <div class="field">
-          <label>Audience ID</label>
-          <input type="text" id="settingsMailchimpAudience" autocapitalize="none" autocorrect="off">
-        </div>
-        <div class="field">
-          <label>Server Prefix</label>
-          <input type="text" id="settingsMailchimpServer" placeholder="us1" autocapitalize="none" autocorrect="off">
-        </div>
-      </div>
-    </details>
+    <!-- Email + Mailchimp settings removed: guest email now goes out from
+         Flukesend (one gallery email per guest), so Flukelogs no longer
+         sends anything and needs no sending credentials. -->
 
     <details class="section section-collapsible">
       <summary>
@@ -1665,29 +1626,11 @@
   <!-- Review & Send -->
   <div class="screen" id="screenReview">
     <div class="section">
-      <div class="section-label">Send Report to Guests</div>
-      <p style="font-size:12px;color:var(--muted);font-weight:400;margin-bottom:12px;line-height:1.5;">Tap the camera on each row to add that guest's photo — it goes on their report and their story card. Guests without a photo get a clean branded report.</p>
-      <div id="guestRows"></div>
-      <button class="btn btn-outline" type="button" style="margin-bottom:12px;" onclick="addGuestRow()">+ Add guest</button>
-      <button class="btn btn-primary" id="btnSend" onclick="sendReport()">Send Trip Report</button>
-      <!-- Shared picker for per-row photos; routed by _pendingPhotoRow -->
-      <input type="file" id="rowPhotoInput" accept="image/*" style="display:none;" onchange="handleRowPhoto(event)">
-    </div>
-
-    <!-- Revealed after a successful send: email a forgotten guest without
-         re-logging the trip. -->
-    <div class="section" id="addGuestBlock" style="display:none;">
-      <div class="section-label">Add a Guest</div>
-      <p style="font-size:12px;color:var(--muted);font-weight:400;margin-bottom:12px;line-height:1.5;">Forgot someone? Send them the trip recap — this won't log the trip again. Optionally attach their own photo first.</p>
-      <div class="field">
-        <label>Guest email</label>
-        <input type="email" id="addGuestInput" placeholder="guest@email.com" inputmode="email" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addGuestSend();}">
-      </div>
-      <div class="guest-row-photo-line">
-        <button type="button" class="btn btn-outline" id="btnAddGuestPhoto" onclick="_pendingPhotoRow = 'addGuest'; document.getElementById('rowPhotoInput').click();">Add their photo (optional)</button>
-        <img id="addGuestPhotoThumb" class="guest-photo-thumb" hidden>
-      </div>
-      <button class="btn btn-primary" type="button" id="btnAddGuest" onclick="addGuestSend()">Email this guest</button>
+      <div class="section-label">Log Trip</div>
+      <p style="font-size:12px;color:var(--muted);font-weight:400;margin-bottom:12px;line-height:1.5;">Puts this trip's sightings, route, and stats on your public sightings widget. Guest photos and the trip recap go out together from Flukesend — no emails are sent from here.</p>
+      <button class="btn btn-primary" id="btnSend" onclick="logTrip()">Log Trip</button>
+      <p id="loggedSummary" style="display:none;font-size:13px;color:var(--success);font-weight:500;margin-top:12px;line-height:1.6;"></p>
+      <p id="loggedHandoff" style="display:none;font-size:12px;color:var(--muted);font-weight:400;margin-top:4px;line-height:1.5;">Tonight: open <a href="https://www.flukesend.com/send" target="_blank" rel="noopener" style="color:var(--muted);">Flukesend</a>, drop in the edited photos, and every guest who scanned the QR gets their gallery and trip recap in one email.</p>
     </div>
 
     <details class="section">
@@ -2544,26 +2487,42 @@
             <div class="sighting-badge">×${s.count}</div>
           </div>`).join('');
     saveTrip();
-    renderGuestRows();
-    // A reload after a successful send lands back here — restore the sent
+    // A reload after a successful log lands back here — restore the logged
     // state so the captain can't accidentally re-log the trip (the old
     // "looks unsent, send again" path created duplicate trips on the
-    // widget), and surface Add-a-Guest for any extra emails instead.
+    // widget). sentTripId keeps its name for localStorage back-compat with
+    // trips saved by the send-report era.
     const btnSend = document.getElementById('btnSend');
     if (trip.sentTripId) {
       sentTripId = trip.sentTripId;
-      btnSend.disabled = true;
-      btnSend.innerHTML = '✓ Report Sent';
-      btnSend.style.background = 'var(--success)';
-      document.getElementById('addGuestBlock').style.display = 'block';
+      showLoggedState();
     } else {
+      sentTripId = null;
       btnSend.disabled = false;
-      btnSend.innerHTML = 'Send Trip Report';
+      btnSend.innerHTML = 'Log Trip';
       btnSend.style.background = '';
-      document.getElementById('addGuestBlock').style.display = 'none';
+      document.getElementById('loggedSummary').style.display = 'none';
+      document.getElementById('loggedHandoff').style.display = 'none';
     }
     document.querySelectorAll('#screenReview details.section').forEach(d => d.open = false);
     showScreen('screenReview');
+  }
+
+  // The post-log UI: button locks green, the summary line states what is now
+  // public, and the handoff line points at Flukesend for photo delivery.
+  function showLoggedState(logged) {
+    const btnSend = document.getElementById('btnSend');
+    btnSend.disabled = true;
+    btnSend.innerHTML = '✓ Trip Logged';
+    btnSend.style.background = 'var(--success)';
+    const species = (logged && logged.species) ?? new Set((trip.sightings || []).map(s => s.species)).size;
+    const animals = (logged && logged.animals) ?? (trip.sightings || []).reduce((n, s) => n + (Number(s.count) || 0), 0);
+    const summary = document.getElementById('loggedSummary');
+    summary.textContent = species > 0
+      ? `${species} species · ${animals} animals — live on your sightings widget.`
+      : 'Trip logged — route and stats are on your sightings widget.';
+    summary.style.display = 'block';
+    document.getElementById('loggedHandoff').style.display = 'block';
   }
 
   // Shared downscale (max 1200px wide, jpeg 0.75) used by the trip photo and
@@ -2951,40 +2910,46 @@
     return result;
   }
 
-  async function sendReport() {
+  // Writes the trip to the widget and sends nothing. Guest photos and the
+  // trip recap go out together from Flukesend, where the send flow reads
+  // this trip's species and counts straight from the shared database.
+  async function logTrip() {
     // Guard against the double-log that used to happen when the captain
-    // re-sent after a reload wiped the "already sent" state.
-    if (trip.sentTripId) {
-      document.getElementById('addGuestBlock').style.display = 'block';
-      return toast('Already sent — use "Add a Guest" below for more emails', 'error');
-    }
-    const guests = guestGroups
-      .map(g => ({ email: (g.email || '').trim(), photoData: g.photoData || null }))
-      .filter(g => g.email);
-    if (guests.length === 0) return toast('Add at least one email', 'error');
-    const bad = guests.find(g => !emailRegex.test(g.email));
-    if (bad) return toast('Invalid email: ' + bad.email, 'error');
+    // re-submitted after a reload wiped the "already logged" state.
+    if (trip.sentTripId) return toast('This trip is already logged', 'error');
     const btn = document.getElementById('btnSend');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span>Sending...';
+    btn.innerHTML = '<span class="spinner"></span>Logging...';
     try {
-      const result = await postTripReport({ guests });
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) { handleLogout(); throw new Error('Session expired — sign in again'); }
+      // Compute the trip's local calendar date on the device — the server
+      // otherwise derives it from startTime in UTC, which rolls a morning
+      // trip in a negative-UTC offset onto the wrong day.
+      const _ts = trip.startTime instanceof Date ? trip.startTime : new Date(trip.startTime);
+      const tripDate = `${_ts.getFullYear()}-${String(_ts.getMonth() + 1).padStart(2, '0')}-${String(_ts.getDate()).padStart(2, '0')}`;
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ tripData: trip, tripDate, mode: 'log-only' }),
+      });
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Failed to log trip');
       sentTripId = result.trip_id || null;
-      // Persist the sent marker on the trip itself — a web-view reload used
-      // to lose this, making the report look unsent and inviting a second
-      // submission (= duplicate trip on the widget).
+      // Persist the logged marker on the trip itself — a web-view reload
+      // used to lose this, making the trip look unlogged and inviting a
+      // second submission (= duplicate trip on the widget).
       if (sentTripId) { trip.sentTripId = sentTripId; saveTrip(); }
-      toast(`Sent to ${guests.length} guest${guests.length > 1 ? 's' : ''}!`, 'success');
-      btn.innerHTML = '✓ Report Sent';
-      btn.style.background = 'var(--success)';
-      // Reveal the add-a-guest path so a forgotten email can still go out
-      // without restarting the app (which would re-log the trip).
-      if (sentTripId) document.getElementById('addGuestBlock').style.display = 'block';
+      toast('Trip logged', 'success');
+      showLoggedState(result.logged);
     } catch (err) {
       console.error(err);
-      toast(err.message || 'Failed to send', 'error');
+      toast(err.message || 'Failed to log trip', 'error');
       btn.disabled = false;
-      btn.innerHTML = 'Send Trip Report';
+      btn.innerHTML = 'Log Trip';
     }
   }
 
@@ -3032,12 +2997,12 @@
     if (agThumb) { agThumb.hidden = true; agThumb.src = ''; }
     const agBtn = document.getElementById('btnAddGuestPhoto');
     if (agBtn) agBtn.textContent = 'Add their photo (optional)';
-    document.getElementById('btnSend').innerHTML = 'Send Trip Report';
+    document.getElementById('btnSend').innerHTML = 'Log Trip';
     document.getElementById('btnSend').disabled = false;
     document.getElementById('btnSend').style.background = '';
+    document.getElementById('loggedSummary').style.display = 'none';
+    document.getElementById('loggedHandoff').style.display = 'none';
     sentTripId = null;
-    document.getElementById('addGuestBlock').style.display = 'none';
-    document.getElementById('addGuestInput').value = '';
     showScreen('screenStart');
     // Re-pull today's bookings so the next slot of the day (if any) drives
     // the prefill — without this, the picker stays pinned to whichever slot
@@ -3183,7 +3148,6 @@
     guestGroups = [];
     try { localStorage.removeItem(GUESTS_KEY); } catch (e) {}
     sentTripId = null;
-    document.getElementById('addGuestBlock').style.display = 'none';
     document.getElementById('loginPassword').value = '';
     setRibbonForLoggedOut();
     showScreen('screenLogin');
@@ -3293,14 +3257,17 @@
     }
   }
 
-  // True when any required onboarding step is incomplete. We only auto-route
-  // to Welcome on REQUIRED gaps so a captain who skipped Mailchimp doesn't
-  // get nagged every login. Recommended items still appear on the checklist
-  // when they open it manually.
+  // True while basic setup is incomplete. Email credentials used to be the
+  // one REQUIRED step; guest email now goes out from Flukesend, so nothing
+  // here is strictly required anymore. We still surface Welcome until the
+  // operator has a logo and a species list — the two things a bare widget
+  // and an empty sighting dropdown would make painfully obvious.
   function shouldShowWelcome() {
     if (!operatorConfig) return false;
-    const emailDone = !!(operatorConfig.from_email && operatorConfig.has_gmail_app_password);
-    return !emailDone;
+    const basicsDone = !!operatorConfig.logo_url
+      && Array.isArray(operatorConfig.species_list)
+      && operatorConfig.species_list.length > 0;
+    return !basicsDone;
   }
 
   // Fetch /api/me and apply the returned operator config to the UI.
@@ -3401,19 +3368,11 @@
     const cfg = operatorConfig || {};
     return [
       {
-        key: 'email',
-        title: 'Email & app password',
-        help: 'Required to send trip reports to guests.',
-        required: true,
-        done: !!(cfg.from_email && cfg.has_gmail_app_password),
-        focus: 'email',
-      },
-      {
         key: 'branding',
-        title: 'Logos uploaded',
-        help: 'Used on the PDF report and email header.',
+        title: 'Logo uploaded',
+        help: 'Shown on your public sightings widget.',
         required: false,
-        done: !!(cfg.logo_url && cfg.logo_url_email),
+        done: !!cfg.logo_url,
         focus: 'branding',
       },
       {
@@ -3431,14 +3390,6 @@
         required: false,
         done: Array.isArray(cfg.species_list) && cfg.species_list.length > 0,
         focus: 'species',
-      },
-      {
-        key: 'mailchimp',
-        title: 'Mailchimp (optional)',
-        help: 'Auto-adds guests to your audience after each trip.',
-        required: false,
-        done: !!(cfg.has_mailchimp_api_key && cfg.mailchimp_audience_id),
-        focus: 'mailchimp',
       },
       {
         key: 'widget',
@@ -3504,10 +3455,8 @@
   // The argument matches the welcome-item .focus value.
   function focusSettingsSection(focus) {
     const map = {
-      email:     { selector: 'details:has(#settingsFromEmail)', input: '#settingsGmailPwd' },
       branding:  { selector: 'details:has(#settingsLogoUrlPreview)' },
       species:   { selector: 'details:has(#settingsSpeciesGroups)' },
-      mailchimp: { selector: 'details:has(#settingsMailchimpKey)', input: '#settingsMailchimpKey' },
       // The Public Widget section isn't collapsible — just scroll to the
       // embed-code copy button which is the actionable bit.
       widget:    { scrollTo: '#settingsEmbedCode' },
@@ -3539,16 +3488,6 @@
     document.getElementById('settingsLogoUrl').value          = cfg.logo_url || '';
     document.getElementById('settingsLogoUrlEmail').value     = cfg.logo_url_email || '';
     document.getElementById('settingsTagline').value          = cfg.tagline || '';
-    document.getElementById('settingsReviewUrl').value        = cfg.review_url || '';
-    document.getElementById('settingsFromEmail').value        = cfg.from_email || '';
-    document.getElementById('settingsGmailPwd').value         = '';
-    document.getElementById('settingsGmailPwdHint').textContent =
-      cfg.has_gmail_app_password ? '(leave blank to keep current)' : '(not set)';
-    document.getElementById('settingsMailchimpKey').value     = '';
-    document.getElementById('settingsMailchimpKeyHint').textContent =
-      cfg.has_mailchimp_api_key ? '(leave blank to keep current)' : '(not set)';
-    document.getElementById('settingsMailchimpAudience').value = cfg.mailchimp_audience_id || '';
-    document.getElementById('settingsMailchimpServer').value   = cfg.mailchimp_server_prefix || '';
     renderSpeciesGroupEditor(cfg.species_list || []);
     showLogoPreview('settingsLogoUrlPreview',      cfg.logo_url);
     showLogoPreview('settingsLogoUrlEmailPreview', cfg.logo_url_email);
@@ -3588,18 +3527,6 @@
         : pdf ? 'PDF logo set'
         : eml ? 'Email logo set'
         : 'No logos set';
-    }
-    const em = document.getElementById('settingsEmailStatus');
-    if (em) {
-      // Surface a missing app password in the collapsed header so the captain
-      // notices before they try to send a trip report.
-      if (!cfg.from_email) em.textContent = 'Not set';
-      else if (!cfg.has_gmail_app_password) em.textContent = cfg.from_email + ' · no password';
-      else em.textContent = cfg.from_email;
-    }
-    const mc = document.getElementById('settingsMailchimpStatus');
-    if (mc) {
-      mc.textContent = cfg.has_mailchimp_api_key ? 'Configured' : 'Not set';
     }
     const sp = document.getElementById('settingsSpeciesStatus');
     if (sp) {
@@ -3833,12 +3760,6 @@
       logo_url:                document.getElementById('settingsLogoUrl').value.trim()      || null,
       logo_url_email:          document.getElementById('settingsLogoUrlEmail').value.trim() || null,
       tagline:                 document.getElementById('settingsTagline').value.trim()      || null,
-      review_url:              document.getElementById('settingsReviewUrl').value.trim()    || null,
-      from_email:              document.getElementById('settingsFromEmail').value.trim()    || null,
-      gmail_app_password:      document.getElementById('settingsGmailPwd').value.replace(/\s+/g, ''), // strip display spaces; empty = keep current
-      mailchimp_api_key:       document.getElementById('settingsMailchimpKey').value, // empty = keep current
-      mailchimp_audience_id:   document.getElementById('settingsMailchimpAudience').value.trim() || null,
-      mailchimp_server_prefix: document.getElementById('settingsMailchimpServer').value.trim() || null,
       species_list:            serializeSpeciesGroups(),
       show_map_on_widget:      document.getElementById('settingsShowMapOnWidget').checked,
       widget_host_url:         document.getElementById('settingsWidgetHostUrl').value.trim() || null,
