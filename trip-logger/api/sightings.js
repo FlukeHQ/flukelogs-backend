@@ -29,7 +29,7 @@ async function loadOperatorRow(slug) {
   try {
     const safeSlug = encodeURIComponent(slug);
     const res = await fetch(
-      `${url}/rest/v1/operators?slug=eq.${safeSlug}&select=id,slug,name,show_map_on_widget,logo_url,logo_url_email,widget_host_url,home_port_lat,home_port_lng&limit=1`,
+      `${url}/rest/v1/operators?slug=eq.${safeSlug}&select=id,slug,name,show_map_on_widget,logo_url,logo_url_email,widget_host_url,widget_standalone_url,home_port_lat,home_port_lng&limit=1`,
       { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
     );
     if (!res.ok) return null;
@@ -222,9 +222,13 @@ module.exports = async function handler(req, res) {
           // share button so shared links land on their branded site, not
           // the bare vercel widget URL. Null = fall back to vercel domain.
           widget_host_url: operator.widget_host_url || null,
+          // Branded domain serving THIS widget standalone (no iframe) —
+          // used by the full-screen breakout, which can't go full screen
+          // from inside an embed. Null = fall back to the current URL.
+          widget_standalone_url: operator.widget_standalone_url || null,
           home_port: homePort,
         }
-      : { id: null, slug, show_map_on_widget: true, widget_host_url: null, home_port: null };
+      : { id: null, slug, show_map_on_widget: true, widget_host_url: null, widget_standalone_url: null, home_port: null };
 
     // Per-trip enrichment only when both the operator AND the trip resolve
     // — otherwise fall through to the generic operator-level OG.
