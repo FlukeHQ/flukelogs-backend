@@ -2342,9 +2342,17 @@
     }
   }
 
-  function liveStatus(species) {
+  function liveStatus(species, count) {
     if (!trip.liveId) return;
-    livePost({ action: 'status', tripId: trip.liveId, species }).catch(() => {});
+    const body = { action: 'status', tripId: trip.liveId, species };
+    if (Number.isFinite(+count)) body.count = +count;
+    // Where the sighting happened — becomes a live dot on the public map
+    // (delay+fuzz applied server-side). Omitted when GPS hasn't fixed yet.
+    if (Number.isFinite(+trip.lastLat) && Number.isFinite(+trip.lastLng)) {
+      body.lat = +trip.lastLat;
+      body.lng = +trip.lastLng;
+    }
+    livePost(body).catch(() => {});
   }
 
   // Closes the broadcast. liveId is cleared (and persisted) first, so a
@@ -2394,7 +2402,7 @@
     if (!count || count < 1) return toast('Enter a count', 'error');
     if (!time) return toast('Set a time', 'error');
     trip.sightings.push({ species, count: parseInt(count), time, notes, lat: trip.lastLat, lng: trip.lastLng });
-    liveStatus(species); // widget flips to "currently watching <species>"
+    liveStatus(species, parseInt(count)); // live banner + a live dot on the widget map
     document.getElementById('inputSpecies').value = '';
     document.getElementById('inputCount').value = '1';
     document.getElementById('inputNotes').value = '';

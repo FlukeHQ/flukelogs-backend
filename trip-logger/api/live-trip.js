@@ -28,7 +28,7 @@ function pgHeaders(extra) {
 
 async function getRow(tripId) {
   const url = process.env.SUPABASE_URL;
-  const res = await fetch(`${url}/rest/v1/live_trips?trip_id=eq.${tripId}&select=trip_id,operator_id,track`, {
+  const res = await fetch(`${url}/rest/v1/live_trips?trip_id=eq.${tripId}&select=trip_id,operator_id,track,sightings`, {
     headers: pgHeaders(),
   });
   if (!res.ok) throw new Error(`live_trips read ${res.status}`);
@@ -94,13 +94,30 @@ module.exports = async function handler(req, res) {
 
     if (action === 'status') {
       const species = String(req.body.species || '').slice(0, 80) || null;
-      await upsertRow({
+      const update = {
         trip_id: tripId,
         operator_id: operatorId,
         last_seen_at: nowISO,
         status_species: species,
         status_at: species ? nowISO : null,
-      });
+      };
+      // When the app knows where the sighting happened, append it as a live
+      // dot. Ephemeral, append-only (mid-trip edits/deletes don't sync — the
+      // report at trip end is the real record). Cap like the track.
+      const lat = +req.body.lat, lng = +req.body.lng;
+      if (species && Number.isFinite(lat) && Number.isFinite(lng)) {
+        const count = Number.isFinite(+req.body.count)
+          ? Math.min(9999, Math.max(1, Math.round(+req.body.count)))
+          : null;
+        update.sightings = ((existing && existing.sightings) || []).concat([{
+          species,
+          count,
+          lat: +lat.toFixed(6),
+          lng: +lng.toFixed(6),
+          t: nowISO,
+        }]).slice(-50);
+      }
+      await upsertRow(update);
       return res.status(200).json({ ok: true });
     }
 
