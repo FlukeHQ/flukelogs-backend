@@ -617,6 +617,53 @@ async function saveToSupabase(tripData, operatorId) {
 // navigator.geolocation on the PWA. Server-side downsample to 500 points max
 // so a noisy device doesn't blow up the table, and silently no-op if the
 // payload is empty (the widget then falls back to pin-to-pin lines).
+// The trip-level record: which boat, which scheduled departure, who was
+// aboard. Written once per logged trip so Flukesend's getLoggedTrip can
+// fill the send form's whole Trip step, not just species. Upsert on
+// trip_id so a retried log never duplicates the row.
+async function saveLogbookTrip(tripData, operatorId) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SECRET_KEY;
+  if (!supabaseUrl || !supabaseKey || !operatorId || !tripData || !tripData.tripId) return;
+
+  const row = {
+    trip_id:     tripData.tripId,
+    operator_id: operatorId,
+    trip_date:   resolveTripDate(tripData),
+    trip_part:   tripData.tripPart || null,
+    trip_time:   (typeof tripData.tripTime === 'string' && /^\d{1,2}:\d{2}$/.test(tripData.tripTime))
+      ? tripData.tripTime
+      : null,
+    boat_id:     (typeof tripData.boatId === 'string' && /^[0-9a-f-]{36}$/i.test(tripData.boatId))
+      ? tripData.boatId
+      : null,
+    boat_name:   (typeof tripData.boatName === 'string' && tripData.boatName.trim())
+      ? tripData.boatName.trim().slice(0, 120)
+      : null,
+    crew_names:  Array.isArray(tripData.crewNames)
+      ? tripData.crewNames.filter(n => typeof n === 'string' && n.trim()).map(n => n.trim().slice(0, 120)).slice(0, 30)
+      : [],
+  };
+
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/logbook_trips?on_conflict=trip_id`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Prefer': 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify([row]),
+    });
+    if (!response.ok) {
+      console.error('logbook_trips save error:', response.status, (await response.text()).slice(0, 200));
+    }
+  } catch (e) {
+    console.error('logbook_trips fetch error:', e.message);
+  }
+}
+
 async function saveTrackToSupabase(track, operatorId, tripId) {
   if (!Array.isArray(track) || track.length === 0 || !operatorId || !tripId) return;
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -929,6 +976,7 @@ module.exports = async function handler(req, res) {
     // Depths are attached above so the sighting rows match a full send's.
     if (isLogOnly) {
       await saveToSupabase(tripData, operatorId);
+      await saveLogbookTrip(tripData, operatorId);
       saveTrackToSupabase(tripData.track, operatorId, tripData.tripId)
         .catch(e => console.error('saveTrackToSupabase background error:', e.message));
       const speciesCount = new Set((tripData.sightings || []).map(s => s.species)).size;

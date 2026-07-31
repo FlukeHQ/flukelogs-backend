@@ -1131,6 +1131,14 @@
           <input type="password" id="loginPassword" autocomplete="current-password" required>
         </div>
         <button class="btn btn-primary" id="loginBtn" type="submit">Sign In</button>
+        <!-- The recovery email lands the captain back here with a code, and
+             the existing set-password screen takes over. This also covers a
+             Flukesend account created with Google: one reset gives it a
+             password the app can sign in with. -->
+        <p style="text-align:center;margin:14px 0 0;">
+          <a href="#" onclick="event.preventDefault(); forgotPassword();"
+             style="font-size:12.5px;color:var(--muted);font-weight:500;">Forgot password?</a>
+        </p>
       </form>
     </div>
   </div>
@@ -1165,6 +1173,25 @@
       <div class="field" id="bookingSlotField" style="display:none;">
         <label>FareHarbor Bookings &middot; Today</label>
         <div id="bookingSlotPicker"></div>
+      </div>
+
+      <!-- Boat / departure / crew come from the operator's Flukesend roster
+           (one database since the merge). Each field renders only when there
+           is a real choice to make: one boat means no boat picker, and an
+           operator with no roster sees this screen exactly as before. -->
+      <div class="field" id="boatField" style="display:none;">
+        <label>Boat</label>
+        <div class="seg" id="boatSeg"></div>
+      </div>
+
+      <div class="field" id="tripTimeField" style="display:none;">
+        <label>Departure</label>
+        <div class="seg" id="tripTimeSeg"></div>
+      </div>
+
+      <div class="field" id="crewField" style="display:none;">
+        <label>Crew Aboard</label>
+        <div class="seg" id="crewSeg" style="flex-wrap:wrap;"></div>
       </div>
 
       <div class="field">
@@ -1719,6 +1746,10 @@
     return {
       startTime: null, endTime: null,
       passengers: 6, waterTemp: '', visibility: '', conditions: '',
+      // Which boat, which scheduled departure, who was aboard — picked from
+      // the operator's Flukesend roster at trip start; lands in
+      // logbook_trips so the send flow can fill its whole Trip step.
+      boatId: null, boatName: null, tripTime: null, crewNames: [],
       sightings: [], lastLat: null, lastLng: null, photoData: null,
       distanceNM: 0, prevLat: null, prevLng: null,
       // Continuous GPS breadcrumb, captured on every position update.
@@ -2087,10 +2118,110 @@
   }
 
   // ── Trip functions ───────────────────────────────────────────
+  // ── Roster pickers: boat, departure, crew ──────────────────────────
+  // Populated from /api/me's roster block — the operator's own Flukesend
+  // boats, crew, and trip times, straight from the shared database. Each
+  // picker renders only when there is a real choice: one boat selects
+  // itself invisibly, and an operator with no roster sees nothing new.
+  let operatorRoster = { boats: [], crew: [], trip_times: [] };
+  let selBoatId = null, selTripTime = null, selCrew = [];
+  const LAST_BOAT_KEY = 'flukelogs_last_boat';
+  const LAST_CREW_KEY = 'flukelogs_last_crew';
+
+  function fmtTripTime(t) {
+    const parts = String(t).split(':');
+    const h = Number(parts[0]), m = Number(parts[1] || 0);
+    if (!Number.isFinite(h)) return t;
+    return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+  }
+
+  // The departure most likely underway right now: the latest scheduled
+  // time already past, else the first still ahead. A captain starting the
+  // 9 AM at 9:05 gets 9:00 without touching anything.
+  function defaultTripTime(times) {
+    const now = new Date();
+    const mins = now.getHours() * 60 + now.getMinutes();
+    let past = null;
+    for (const t of times) {
+      const parts = String(t).split(':');
+      const v = (Number(parts[0]) || 0) * 60 + (Number(parts[1]) || 0);
+      if (v <= mins) past = t; else break;
+    }
+    return past || times[0] || null;
+  }
+
+  function renderRosterPickers() {
+    const { boats, crew, trip_times } = operatorRoster;
+
+    // Boat: remember the last one used — each photographer works the same
+    // boat most days, so the default is right nearly always.
+    let lastBoat = null;
+    try { lastBoat = localStorage.getItem(LAST_BOAT_KEY); } catch (e) {}
+    selBoatId = (boats.find(b => b.id === lastBoat) || boats[0] || {}).id || null;
+    const boatField = document.getElementById('boatField');
+    if (boatField) {
+      boatField.style.display = boats.length > 1 ? '' : 'none';
+      const seg = document.getElementById('boatSeg');
+      if (seg) {
+        seg.innerHTML = boats.map(b =>
+          `<button type="button" data-boat="${b.id}" class="${b.id === selBoatId ? 'on' : ''}">${escapeHtml(b.name)}</button>`).join('');
+        seg.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+          selBoatId = btn.dataset.boat;
+          seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === btn));
+        }));
+      }
+    }
+
+    selTripTime = defaultTripTime(trip_times);
+    const timeField = document.getElementById('tripTimeField');
+    if (timeField) {
+      timeField.style.display = trip_times.length > 1 ? '' : 'none';
+      const seg = document.getElementById('tripTimeSeg');
+      if (seg) {
+        seg.innerHTML = trip_times.map(t =>
+          `<button type="button" data-time="${escapeHtml(t)}" class="${t === selTripTime ? 'on' : ''}">${fmtTripTime(t)}</button>`).join('');
+        seg.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+          selTripTime = btn.dataset.time;
+          seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === btn));
+        }));
+      }
+    }
+
+    // Crew: multi-select, remembering yesterday's crew as today's default.
+    let lastCrew = [];
+    try { lastCrew = JSON.parse(localStorage.getItem(LAST_CREW_KEY) || '[]'); } catch (e) {}
+    const names = crew.map(c => c.name);
+    selCrew = lastCrew.filter(n => names.includes(n));
+    const crewField = document.getElementById('crewField');
+    if (crewField) {
+      crewField.style.display = crew.length ? '' : 'none';
+      const seg = document.getElementById('crewSeg');
+      if (seg) {
+        seg.innerHTML = crew.map(c =>
+          `<button type="button" data-crew="${escapeHtml(c.name)}" class="${selCrew.includes(c.name) ? 'on' : ''}">${escapeHtml(c.name)}</button>`).join('');
+        seg.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+          const name = btn.dataset.crew;
+          if (selCrew.includes(name)) selCrew = selCrew.filter(n => n !== name);
+          else selCrew.push(name);
+          btn.classList.toggle('on', selCrew.includes(name));
+        }));
+      }
+    }
+  }
+
   function startTrip() {
     const passengers = document.getElementById('inputPassengers').value;
     if (!passengers || passengers < 1) return toast('Enter passenger count', 'error');
     trip.startTime = new Date();
+    const boat = operatorRoster.boats.find(b => b.id === selBoatId) || null;
+    trip.boatId = boat ? boat.id : null;
+    trip.boatName = boat ? boat.name : null;
+    trip.tripTime = selTripTime || null;
+    trip.crewNames = selCrew.slice();
+    try {
+      if (trip.boatId) localStorage.setItem(LAST_BOAT_KEY, trip.boatId);
+      localStorage.setItem(LAST_CREW_KEY, JSON.stringify(selCrew));
+    } catch (e) {}
     trip.passengers = parseInt(passengers);
     trip.waterTemp = document.getElementById('inputWaterTemp').value;
     trip.visibility = document.getElementById('inputVisibility').value;
@@ -3114,6 +3245,23 @@
     }
   }
 
+  // Emails a recovery link that lands back at this app; the boot path's
+  // redirect capture routes it to the set-password screen. Uses the login
+  // form's email so there is nothing extra to type on a rocking boat.
+  async function forgotPassword() {
+    const email = document.getElementById('loginEmail').value.trim();
+    if (!email) return toast('Type your email above first', 'error');
+    try {
+      const { error } = await sb.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
+      if (error) throw error;
+      toast('Reset link sent — check your email', 'success');
+    } catch (e) {
+      toast(e.message || 'Could not send the reset link', 'error');
+    }
+  }
+
   async function handleLogin() {
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
@@ -3314,6 +3462,10 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const body = await res.json();
       operatorConfig = body.operator || null;
+      operatorRoster = (body.roster && typeof body.roster === 'object')
+        ? { boats: body.roster.boats || [], crew: body.roster.crew || [], trip_times: body.roster.trip_times || [] }
+        : { boats: [], crew: [], trip_times: [] };
+      renderRosterPickers();
       if (operatorConfig && operatorConfig.species_list && operatorConfig.species_list.length) {
         renderSpeciesDropdown(operatorConfig.species_list);
       }
