@@ -1474,9 +1474,12 @@ function toggleMapFull() {
   // Embedded in an iframe that doesn't grant fullscreen (no allowfullscreen
   // attribute on the host page): taking over the iframe just letterboxes the
   // map inside the host layout. Break out to the standalone widget in a new
-  // tab instead — ?fullmap=1 re-enters full-map mode there on load.
+  // tab instead — ?fullmap=1 re-enters full-map mode there on load. Prefer
+  // the operator's branded standalone domain (sightings.<operator>.com) over
+  // whatever internal URL the iframe happened to load the widget from.
   if (!mapIsFull && window.parent !== window && !document.fullscreenEnabled) {
-    const u = new URL(window.location.href);
+    const u = new URL(OP.widget_standalone_url || window.location.href);
+    if (OP.slug) u.searchParams.set('op', OP.slug);
     u.searchParams.set('fullmap', '1');
     window.open(u.toString(), '_blank');
     return;
