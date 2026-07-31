@@ -1263,6 +1263,10 @@ function renderNowBanner(data) {
 const LIVE_POLL_MS = 60000;
 let liveBoatMarker = null;
 let liveTrackLine = null;
+// One-shot per broadcast: widen the view to include the boat the first time
+// it appears (it may be well outside the last trip's pins the map opens on).
+// Never re-fires on later polls, so visitors can pan/zoom freely after.
+let liveViewFitted = false;
 
 function fmtClock(iso) {
   const d = new Date(iso);
@@ -1288,6 +1292,7 @@ function renderLive(live) {
       renderNowBanner(allData);
     }
     if (map) clearLiveMapLayers();
+    liveViewFitted = false; // next broadcast gets its own one-shot fit
     return;
   }
 
@@ -1327,6 +1332,13 @@ function renderLive(live) {
       <strong style="font-size:13px;">⛵ Out on the water now</strong><br>
       Approximate position, ${live.delay_minutes} min ago
     </div>`);
+    if (!liveViewFitted) {
+      liveViewFitted = true;
+      const ll = L.latLng(+live.position.lat, +live.position.lng);
+      if (!map.getBounds().contains(ll)) {
+        map.flyToBounds(map.getBounds().extend(ll), { padding: [40, 40], maxZoom: map.getZoom() });
+      }
+    }
   }
 }
 
