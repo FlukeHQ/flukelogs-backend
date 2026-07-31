@@ -348,6 +348,38 @@
     font-weight: 600;
   }
 
+  /* ── Full-screen map mode (office TV / kiosk) ───────────────────── */
+  .map-full-btn {
+    position: absolute; top: 10px; right: 10px; z-index: 1000;
+    width: 34px; height: 34px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.65); color: #fff;
+    border: 1px solid rgba(255,255,255,.18);
+    cursor: pointer; transition: background .15s ease;
+  }
+  .map-full-btn:hover { background: rgba(0,0,0,0.85); }
+  .map-full-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .map-wrap.is-full {
+    position: fixed; inset: 0; z-index: 99999;
+    height: auto; margin: 0; border: none; border-radius: 0;
+  }
+  /* Live status overlaid on the full-screen map. Sized up for across-the-
+     room reading — this mode exists for a TV on an office wall. */
+  .live-overlay {
+    position: absolute; top: 20px; left: 20px; z-index: 1000;
+    display: none; align-items: center; gap: 16px;
+    background: rgba(10,12,14,0.82);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,107,107,.38); border-radius: 16px;
+    padding: 18px 26px; max-width: min(82vw, 640px);
+    box-shadow: 0 14px 28px rgba(0,0,0,.45);
+  }
+  .live-overlay.on { display: flex; }
+  .live-overlay .now-dot { background: #ff6b6b; box-shadow: 0 0 12px #ff6b6b; animation-duration: 1.4s; width: 10px; height: 10px; }
+  .live-overlay .now-label { color: #ff6b6b; font-size: clamp(9px, 1.1vw, 12px); }
+  .live-overlay .now-species { font-size: clamp(15px, 2.2vw, 26px); }
+  .live-overlay .now-meta { font-size: clamp(10px, 1.3vw, 14px); }
+
   .feed-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
   .feed-header h3 { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.28em; color: var(--text-dim); }
   .feed-count { font-size: 10px; color: var(--text-faint); letter-spacing: 0.18em; text-transform: uppercase; font-weight: 600; }
@@ -644,6 +676,17 @@
     <div class="map-wrap">
       <div id="sightings-map"></div>
       <div class="map-hint" id="map-hint">Click a trip to see its pins</div>
+      <button class="map-full-btn" id="map-full-btn" onclick="toggleMapFull()" aria-label="Toggle full-screen map" title="Full screen">
+        <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="live-overlay" id="live-overlay">
+        <div class="now-dot"></div>
+        <div>
+          <div class="now-label">Live &middot; On the water now</div>
+          <div class="now-species" id="ov-species"></div>
+          <div class="now-meta" id="ov-meta"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1282,6 +1325,8 @@ function clearLiveMapLayers() {
 function renderLive(live) {
   const banner = document.getElementById('now-banner');
   const label = banner.querySelector('.now-label');
+  lastLive = live && live.active ? live : null;
+  updateLiveOverlay();
 
   if (!live || !live.active) {
     if (banner.classList.contains('is-live')) {
@@ -1303,10 +1348,7 @@ function renderLive(live) {
       ? `Currently watching ${live.species}`
       : 'Out searching for the next sighting';
   const since = fmtClock(live.started_at);
-  const metaBits = [];
-  if (since) metaBits.push(`On the water since ${since}`);
-  if (live.position) metaBits.push(`position delayed ${live.delay_minutes} min`);
-  document.getElementById('now-meta').textContent = metaBits.join(' · ');
+  document.getElementById('now-meta').textContent = since ? `On the water since ${since}` : '';
   banner.style.display = 'flex';
 
   if (!map) return;
@@ -1330,7 +1372,7 @@ function renderLive(live) {
     }).addTo(map);
     liveBoatMarker.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
       <strong style="font-size:13px;">⛵ Out on the water now</strong><br>
-      Approximate position, ${live.delay_minutes} min ago
+      Approximate position
     </div>`);
     if (!liveViewFitted) {
       liveViewFitted = true;
@@ -1341,6 +1383,60 @@ function renderLive(live) {
     }
   }
 }
+
+// ── Full-screen map mode ─────────────────────────────────────────────────────
+// For an office TV / kiosk: the map takes over the screen and, when a trip is
+// broadcasting, the live status floats on top of it. Uses the real Fullscreen
+// API where allowed (standalone page; embeds need allowfullscreen on the
+// iframe) and falls back to a fixed-position takeover of the viewport.
+let mapIsFull = false;
+let lastLive = null;
+
+function updateLiveOverlay() {
+  const ov = document.getElementById('live-overlay');
+  if (!ov) return;
+  if (mapIsFull && lastLive) {
+    document.getElementById('ov-species').textContent =
+      (lastLive.watching && lastLive.species)
+        ? `Currently watching ${lastLive.species}`
+        : 'Out searching for the next sighting';
+    const since = fmtClock(lastLive.started_at);
+    document.getElementById('ov-meta').textContent = since ? `On the water since ${since}` : '';
+    ov.classList.add('on');
+  } else {
+    ov.classList.remove('on');
+  }
+}
+
+function setMapFull(on) {
+  const wrap = document.querySelector('.map-wrap');
+  if (!wrap || !map) return;
+  mapIsFull = on;
+  wrap.classList.toggle('is-full', on);
+  if (on) {
+    if (wrap.requestFullscreen) wrap.requestFullscreen().catch(() => {});
+  } else if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  }
+  // Leaflet needs a nudge after the container resizes; re-center on the boat
+  // so the kiosk view opens on the live action when there is any.
+  setTimeout(() => {
+    map.invalidateSize();
+    if (on && liveBoatMarker) map.panTo(liveBoatMarker.getLatLng());
+  }, 260);
+  updateLiveOverlay();
+}
+
+function toggleMapFull() { setMapFull(!mapIsFull); }
+
+// Leaving real fullscreen via Esc/system UI must also unwind the takeover.
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && mapIsFull) setMapFull(false);
+});
+// Esc also exits the fixed-position fallback (no real fullscreen to leave).
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && mapIsFull && !document.fullscreenElement) setMapFull(false);
+});
 
 async function pollLive() {
   if (!OP.slug) return;
