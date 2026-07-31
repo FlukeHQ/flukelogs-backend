@@ -35,7 +35,8 @@
 // public reader, and it applies the operator's privacy transform before
 // anything leaves the server:
 //   - delay: only track points older than live_delay_minutes are published,
-//     so the shown position always trails the boat (default 2 minutes);
+//     so the shown position always trails the boat (default 0.5 = 30s;
+//     numeric since migration 0023, so sub-minute values are fine);
 //   - fuzz:  published lat/lng are snapped to a live_fuzz_deg grid
 //     (0.01 deg ~= 0.6 nm), so the exact spot is never recoverable.
 // The status line ("watching X" / "searching") carries no location and is
