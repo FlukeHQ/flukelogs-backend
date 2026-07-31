@@ -1781,6 +1781,10 @@
       // Continuous GPS breadcrumb, captured on every position update.
       // Sent to the server at trip-end; widget draws the real boat path.
       track: [],
+      // Client-minted id for the live broadcast (live_trips row). Persisted
+      // with the trip so a reload mid-trip resumes the same broadcast, and
+      // nulled by liveEnd() so 'end' fires exactly once.
+      liveId: null,
     };
   }
 
@@ -2148,9 +2152,11 @@
     trip.waterTemp = document.getElementById('inputWaterTemp').value;
     trip.visibility = document.getElementById('inputVisibility').value;
     trip.conditions = document.getElementById('inputConditions').value;
+    trip.liveId = mintLiveId();
     setCurrentTime();
     startGPS();
     startDurationTimer();
+    startLiveBroadcast();
     saveTrip();
     showScreen('screenLog');
   }
@@ -2211,6 +2217,7 @@
       recorded_at: new Date().toISOString(),
       accuracy: (accuracy != null && Number.isFinite(+accuracy)) ? +accuracy : null,
     });
+    if (trip.liveId) livePendingPoints.push({ lat: newLat, lng: newLng, t: new Date().toISOString() });
     document.getElementById('statGPS').textContent = `${newLat.toFixed(4)}, ${newLng.toFixed(4)}`;
     document.getElementById('statDistance').textContent = trip.distanceNM.toFixed(2) + ' NM';
     saveTrip();
@@ -2281,6 +2288,76 @@
     nativeGpsWatcherId = null;
   }
 
+  // ── Live broadcast ───────────────────────────────────────────
+  // While a trip runs, the app streams position batches + the latest species
+  // to /api/live-trip so the public widget can show its delayed, fuzzed
+  // "out on the water right now" layer (the privacy transform happens
+  // server-side in /api/widget-data — the app just sends what it has).
+  // Everything here is fail-soft: a dropped heartbeat never interrupts
+  // logging, and undelivered points stay queued for the next beat.
+  const LIVE_BEAT_MS = 60000;
+  let liveBeatTimer = null;
+  let livePendingPoints = [];   // GPS points not yet delivered
+
+  function mintLiveId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    // Pre-15.4 WKWebView fallback
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+    });
+  }
+
+  async function livePost(body) {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) throw new Error('No session');
+    const res = await fetch('/api/live-trip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error('live-trip ' + res.status);
+  }
+
+  function startLiveBroadcast() {
+    if (!trip.liveId || liveBeatTimer) return;
+    liveBeat(); // first beat right away so the widget flips to LIVE promptly
+    liveBeatTimer = setInterval(liveBeat, LIVE_BEAT_MS);
+  }
+
+  function stopLiveBroadcast() {
+    clearInterval(liveBeatTimer);
+    liveBeatTimer = null;
+    livePendingPoints = [];
+  }
+
+  async function liveBeat() {
+    if (!trip.liveId) return;
+    const points = livePendingPoints.splice(0);
+    try {
+      await livePost({ action: 'heartbeat', tripId: trip.liveId, points });
+    } catch (e) {
+      // Signal drop mid-ocean is normal — re-queue for the next beat.
+      livePendingPoints = points.concat(livePendingPoints);
+    }
+  }
+
+  function liveStatus(species) {
+    if (!trip.liveId) return;
+    livePost({ action: 'status', tripId: trip.liveId, species }).catch(() => {});
+  }
+
+  // Closes the broadcast. liveId is cleared (and persisted) first, so a
+  // reload while parked on the review screen can't re-open or re-end it.
+  function liveEnd() {
+    const id = trip.liveId;
+    if (!id) return;
+    stopLiveBroadcast();
+    trip.liveId = null;
+    saveTrip();
+    livePost({ action: 'end', tripId: id }).catch(() => {});
+  }
+
   function updateDurationDisplay() {
     if (!trip.startTime) return;
     const ms = Date.now() - new Date(trip.startTime);
@@ -2304,6 +2381,7 @@
     if (document.visibilityState === 'visible' && trip.startTime && !trip.endTime) {
       updateDurationDisplay();
       autoRefreshSightingTime(); // phone was in a pocket — catch the clock up
+      liveBeat();                // flush queued points now, not next tick
     }
   });
 
@@ -2316,6 +2394,7 @@
     if (!count || count < 1) return toast('Enter a count', 'error');
     if (!time) return toast('Set a time', 'error');
     trip.sightings.push({ species, count: parseInt(count), time, notes, lat: trip.lastLat, lng: trip.lastLng });
+    liveStatus(species); // widget flips to "currently watching <species>"
     document.getElementById('inputSpecies').value = '';
     document.getElementById('inputCount').value = '1';
     document.getElementById('inputNotes').value = '';
@@ -2436,6 +2515,7 @@
     if (!trip.endTime) trip.endTime = new Date();
     stopGPS();
     stopDurationTimer();
+    liveEnd();
     document.getElementById('revDate').textContent =
       trip.startTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const ms = trip.endTime - trip.startTime;
@@ -3015,6 +3095,7 @@
         setCurrentTime();
         startGPS();
         startDurationTimer();
+        startLiveBroadcast(); // resume the same broadcast after a reload
         renderSightingList();
         showScreen('screenLog');
         toast('Trip restored', 'success');

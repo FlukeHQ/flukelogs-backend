@@ -113,6 +113,34 @@
   }
   .now-cta:hover { transform: translateY(-1px); }
 
+  /* ── Live variant of the banner — trip in progress right now ────── */
+  .now-banner.is-live {
+    background:
+      radial-gradient(120% 100% at 0% 100%, rgba(255,107,107,.14) 0%, rgba(255,107,107,0) 60%),
+      var(--ink-3);
+    border-color: rgba(255,107,107,.38);
+  }
+  .now-banner.is-live .now-dot { background: #ff6b6b; box-shadow: 0 0 12px #ff6b6b; animation-duration: 1.4s; }
+  .now-banner.is-live .now-label { color: #ff6b6b; }
+
+  /* Delayed boat position on the map */
+  .live-boat { position: relative; }
+  .live-boat .core {
+    position: absolute; inset: 4px;
+    border-radius: 50%;
+    background: #ff6b6b;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,.4);
+  }
+  .live-boat .ping {
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    border: 2px solid #ff6b6b;
+    animation: livePing 1.8s ease-out infinite;
+  }
+  @keyframes livePing { 0%{ transform: scale(.5); opacity: .9; } 100%{ transform: scale(1.6); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .live-boat .ping { animation: none; opacity: .5; } }
+
   /* ── Filter + Map grid (D on desktop, C on mobile) ─────────────── */
   .fm-grid {
     display: grid;
@@ -1226,6 +1254,92 @@ function renderNowBanner(data) {
   document.getElementById('now-banner').style.display = 'flex';
 }
 
+// ── Live layer ───────────────────────────────────────────────────────────────
+// While the operator has a trip broadcasting (data.live from /api/widget-data),
+// the recap banner flips into its LIVE variant and the map shows the boat's
+// delayed, fuzzed position + path. Everything here is already privacy-
+// transformed server-side; the widget just paints what it's given. Polls
+// ?live=1 once a minute and reverts cleanly when the broadcast ends.
+const LIVE_POLL_MS = 60000;
+let liveBoatMarker = null;
+let liveTrackLine = null;
+
+function fmtClock(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function clearLiveMapLayers() {
+  if (liveBoatMarker) { map.removeLayer(liveBoatMarker); liveBoatMarker = null; }
+  if (liveTrackLine)  { map.removeLayer(liveTrackLine);  liveTrackLine = null; }
+}
+
+function renderLive(live) {
+  const banner = document.getElementById('now-banner');
+  const label = banner.querySelector('.now-label');
+
+  if (!live || !live.active) {
+    if (banner.classList.contains('is-live')) {
+      // Broadcast ended — restore the latest-trip recap (or hide if no data).
+      banner.classList.remove('is-live');
+      label.textContent = "What's out there right now";
+      banner.style.display = 'none';
+      renderNowBanner(allData);
+    }
+    if (map) clearLiveMapLayers();
+    return;
+  }
+
+  banner.classList.add('is-live');
+  label.textContent = 'Live · On the water now';
+  document.getElementById('now-species').textContent =
+    (live.watching && live.species)
+      ? `Currently watching ${live.species}`
+      : 'Out searching for the next sighting';
+  const since = fmtClock(live.started_at);
+  const metaBits = [];
+  if (since) metaBits.push(`On the water since ${since}`);
+  if (live.position) metaBits.push(`position delayed ${live.delay_minutes} min`);
+  document.getElementById('now-meta').textContent = metaBits.join(' · ');
+  banner.style.display = 'flex';
+
+  if (!map) return;
+  clearLiveMapLayers();
+  const pts = (live.track || []).map(p => [+p.lat, +p.lng]);
+  if (pts.length > 1) {
+    liveTrackLine = L.polyline(pts, {
+      color: '#ff6b6b', weight: 2.5, opacity: 0.8, dashArray: '4 6', interactive: false,
+    }).addTo(map);
+  }
+  if (live.position) {
+    const size = 26;
+    liveBoatMarker = L.marker([+live.position.lat, +live.position.lng], {
+      icon: L.divIcon({
+        html: '<div class="live-boat" style="width:' + size + 'px;height:' + size + 'px;"><div class="ping"></div><div class="core"></div></div>',
+        className: '',
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+      }),
+      zIndexOffset: 1000,
+    }).addTo(map);
+    liveBoatMarker.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
+      <strong style="font-size:13px;">⛵ Out on the water now</strong><br>
+      Approximate position, ${live.delay_minutes} min ago
+    </div>`);
+  }
+}
+
+async function pollLive() {
+  if (!OP.slug) return;
+  try {
+    const res = await fetch(`/api/widget-data?op=${encodeURIComponent(OP.slug)}&live=1`, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) return;
+    const body = await res.json();
+    renderLive(body && body.live);
+  } catch (e) { /* offline blip — try again next minute */ }
+}
+
 // Format a YYYY-MM-DD trip_date as "06 · MAY · 2026".
 function fmtDottedDate(dateStr) {
   if (!dateStr) return '—';
@@ -2003,6 +2117,9 @@ function applyInitialTripFromUrl() {
     renderSegmentedRail(allData);
     refreshMarkers();
     renderFeed(allData);
+    // Live layer: paint from the feed we already have, then keep it fresh.
+    loadWidgetData().then(d => renderLive(d && d.live));
+    setInterval(pollLive, LIVE_POLL_MS);
     document.getElementById('status-text').textContent =
       allData.length ? fmtDottedDate(allData[0].trip_date) : 'No data yet';
     // If the URL has ?trip=<trip id> (shared link), seed the selection
