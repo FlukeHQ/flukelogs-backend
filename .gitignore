@@ -1,0 +1,2 @@
+# Local MCP secrets — never commit. Sourced by setup-triplogger-mcp.sh
+.mcp.env
