@@ -3095,7 +3095,11 @@
         setCurrentTime();
         startGPS();
         startDurationTimer();
-        startLiveBroadcast(); // resume the same broadcast after a reload
+        // Trips started before the live layer deployed (or under stale
+        // webview JS) have no liveId — mint one here so an in-flight trip
+        // joins the broadcast on restore instead of staying dark all day.
+        if (!trip.liveId) { trip.liveId = mintLiveId(); saveTrip(); }
+        startLiveBroadcast(); // resume (or begin) the broadcast after a reload
         renderSightingList();
         showScreen('screenLog');
         toast('Trip restored', 'success');
