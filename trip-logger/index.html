@@ -572,6 +572,19 @@
     }
     .seg button:not(.on):hover { color: var(--text); background: rgba(255,255,255,.04); }
 
+    /* Scrolling variant for rows that can outgrow the screen (crew).
+       Buttons keep their natural width and the row pans sideways, stopping
+       at the last name instead of squeezing everyone into one screen. */
+    .seg.seg-scroll {
+      grid-auto-columns: max-content;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .seg.seg-scroll::-webkit-scrollbar { display: none; }
+    .seg.seg-scroll button { padding: 9px 14px; }
+
     /* ── Buttons ─────────────────────────────────────────────────── */
     .btn {
       width: 100%;
@@ -1191,7 +1204,7 @@
 
       <div class="field" id="crewField" style="display:none;">
         <label>Crew Aboard</label>
-        <div class="seg" id="crewSeg" style="flex-wrap:wrap;"></div>
+        <div class="seg seg-scroll" id="crewSeg"></div>
       </div>
 
       <div class="field">
@@ -2226,6 +2239,9 @@
           else selCrew.push(name);
           btn.classList.toggle('on', selCrew.includes(name));
         }));
+        // Remembered crew can sit past the right edge of the scrollable row
+        const firstOn = seg.querySelector('button.on');
+        if (firstOn) seg.scrollLeft = Math.max(0, firstOn.offsetLeft - seg.clientWidth / 2);
       }
     }
   }
