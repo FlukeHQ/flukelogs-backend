@@ -1382,13 +1382,25 @@ function liveBoats(live) {
 
 // Banner + kiosk overlay share one summary of the fleet: what's being
 // watched (across every boat) and since when. With one boat out the text is
-// identical to what the single-boat widget always said.
+// identical to what the single-boat widget always said. When no sighting is
+// fresh enough to count as "watching", the newest earlier sighting of the
+// broadcast still gets named ("Out searching · Blue Whale spotted at
+// 1:45 PM") instead of the day's best moment vanishing from the banner.
 function liveStatusText(live) {
   const boats = liveBoats(live);
   const watched = [...new Set(boats.filter(b => b.watching && b.species).map(b => b.species))];
-  const species = watched.length
-    ? `Currently watching ${watched.join(' & ')}`
-    : 'Out searching for the next sighting';
+  let species;
+  if (watched.length) {
+    species = `Currently watching ${watched.join(' & ')}`;
+  } else {
+    const seen = boats
+      .filter(b => b.species && b.species_at && Number.isFinite(Date.parse(b.species_at)))
+      .sort((a, b) => Date.parse(b.species_at) - Date.parse(a.species_at))[0];
+    const when = seen && fmtClock(seen.species_at);
+    species = (seen && when)
+      ? `Out searching · ${seen.species} spotted at ${when}`
+      : 'Out searching for the next sighting';
+  }
   const starts = boats.map(b => Date.parse(b.started_at)).filter(Number.isFinite);
   const since = starts.length ? fmtClock(new Date(Math.min(...starts)).toISOString()) : null;
   let meta = since ? `On the water since ${since}` : '';

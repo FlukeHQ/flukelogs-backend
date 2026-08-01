@@ -100,6 +100,10 @@ async function getLiveBlock(operator, showMap) {
     const boat = {
       started_at: row.started_at,
       species: row.status_species || null,
+      // When the sighting is fresh the widget says "currently watching";
+      // after the window it can still say what was spotted and when
+      // (species + species_at) instead of dropping straight to "searching".
+      species_at: row.status_at || null,
       watching: !!(row.status_species && row.status_at &&
         now - Date.parse(row.status_at) <= WATCHING_WINDOW_MINUTES * 60000),
       position: null,
