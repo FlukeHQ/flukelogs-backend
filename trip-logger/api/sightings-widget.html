@@ -864,10 +864,15 @@ function refreshMarkers() {
 
     const depthLabel = fmtDepth(s.depth_meters);
     const depthLine = depthLabel ? `Depth: <strong>${depthLabel}</strong><br>` : '';
+    // Where it was, in plotter format. Only on finished trips: the live
+    // layer's positions are deliberately delayed and snapped to a coarse
+    // grid, so printing coordinates there would imply a precision that
+    // isn't real and hand out a waypoint to steer to.
+    const coordLine = fmtLatLng(s.lat, s.lng);
     m.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
       <strong style="font-size:13px;">${meta.icon} ${s.species || 'Unknown'}</strong><br>
       Count: <strong>${s.count ?? '—'}</strong><br>
-      ${depthLine}${fmtDate(s.trip_date)}
+      ${depthLine}${fmtDate(s.trip_date)}${coordLine ? `<br><span style="white-space:nowrap;">${coordLine}</span>` : ''}
     </div>`);
     m._tripKey = s.trip_id;
     m._species = s.species;
@@ -1280,6 +1285,30 @@ function daysBetween(d) {
   if (diff === 1) return 'yesterday';
   return `${diff} days ago`;
 }
+// Decimal degrees to the degrees-and-decimal-minutes a chart plotter shows:
+// 36.788843, -121.842833 becomes "N 36 47.331  W 121 50.570". Empty string
+// when either value is missing, which is also what an operator who hid their
+// map gets — widget-data strips lat/lng server side for them.
+function fmtLatLng(lat, lng) {
+  // Reject the empties BEFORE coercing: +null and +'' are both 0, so an
+  // operator who hid their map (lat/lng stripped server side) would get
+  // "N 0 0.000  E 0 0.000" on every pin instead of no coordinate line.
+  if (lat === null || lat === undefined || lat === '' ||
+      lng === null || lng === undefined || lng === '') return '';
+  const a = +lat, b = +lng;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return '';
+  const dm = (v, pos, neg) => {
+    const hemi = v < 0 ? neg : pos;
+    const abs = Math.abs(v);
+    let deg = Math.floor(abs);
+    let min = (abs - deg) * 60;
+    // 59.9996 must round up into the next degree, not print as 60.000.
+    if (+min.toFixed(3) >= 60) { deg += 1; min = 0; }
+    return `${hemi} ${deg} ${min.toFixed(3)}`;
+  };
+  return `${dm(a, 'N', 'S')}  ${dm(b, 'E', 'W')}`;
+}
+
 function fmtDepth(m) {
   if (m == null) return null;
   const v = Number(m);
