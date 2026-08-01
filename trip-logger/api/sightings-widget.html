@@ -1383,12 +1383,26 @@ function liveBoats(live) {
 // Banner + kiosk overlay share one summary of the fleet: what's being
 // watched (across every boat) and since when. With one boat out the text is
 // identical to what the single-boat widget always said.
+//
+// A sighting older than the server's watching window no longer claims
+// "currently watching," but it doesn't vanish into a bare "searching"
+// either — the banner keeps today's best news as "spotted at 1:45 PM"
+// until something fresher lands.
 function liveStatusText(live) {
   const boats = liveBoats(live);
   const watched = [...new Set(boats.filter(b => b.watching && b.species).map(b => b.species))];
-  const species = watched.length
-    ? `Currently watching ${watched.join(' & ')}`
-    : 'Out searching for the next sighting';
+  let species;
+  if (watched.length) {
+    species = `Currently watching ${watched.join(' & ')}`;
+  } else {
+    const seen = boats
+      .filter(b => b.species && b.species_at)
+      .sort((a, b) => Date.parse(b.species_at) - Date.parse(a.species_at))[0];
+    const when = seen && fmtClock(seen.species_at);
+    species = (seen && when)
+      ? `Out searching · ${seen.species} spotted at ${when}`
+      : 'Out searching for the next sighting';
+  }
   const starts = boats.map(b => Date.parse(b.started_at)).filter(Number.isFinite);
   const since = starts.length ? fmtClock(new Date(Math.min(...starts)).toISOString()) : null;
   let meta = since ? `On the water since ${since}` : '';
@@ -1444,7 +1458,12 @@ function renderLive(live) {
   if (!map) return;
   clearLiveMapLayers();
   const boats = liveBoats(live);
+  // With one boat out everything stays the standard live red. With a fleet,
+  // each boat that identified itself renders in its roster color — the same
+  // color its QR code prints in — so the lines and markers read apart.
+  const multiBoat = boats.length > 1;
   boats.forEach(boat => {
+    const color = (multiBoat && boat.color) || '#ff6b6b';
     // Live sighting dots — logged mid-trip, published with the same delay +
     // fuzz as the boat. Same species colors as the permanent pins.
     (boat.sightings || []).forEach(s => {
@@ -1467,14 +1486,16 @@ function renderLive(live) {
     const pts = (boat.track || []).map(p => [+p.lat, +p.lng]);
     if (pts.length > 1) {
       liveTrackLines.push(L.polyline(pts, {
-        color: '#ff6b6b', weight: 2.5, opacity: 0.8, dashArray: '4 6', interactive: false,
+        color, weight: 2.5, opacity: 0.8, dashArray: '4 6', interactive: false,
       }).addTo(map));
     }
     if (boat.position) {
       const size = 26;
       const marker = L.marker([+boat.position.lat, +boat.position.lng], {
         icon: L.divIcon({
-          html: '<div class="live-boat" style="width:' + size + 'px;height:' + size + 'px;"><div class="ping"></div><div class="core"></div></div>',
+          html: '<div class="live-boat" style="width:' + size + 'px;height:' + size + 'px;">' +
+            '<div class="ping" style="border-color:' + color + ';"></div>' +
+            '<div class="core" style="background:' + color + ';"></div></div>',
           className: '',
           iconSize: [size, size],
           iconAnchor: [size / 2, size / 2],
@@ -1482,7 +1503,7 @@ function renderLive(live) {
         zIndexOffset: 1000,
       }).addTo(map);
       marker.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
-        <strong style="font-size:13px;">⛵ Out on the water now</strong><br>
+        <strong style="font-size:13px;">⛵ ${boat.boat_name ? boat.boat_name + ' · out' : 'Out'} on the water now</strong><br>
         Approximate position
       </div>`);
       liveBoatMarkers.push(marker);

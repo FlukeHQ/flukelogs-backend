@@ -77,14 +77,31 @@ async function pgGet(pathAndQuery) {
 async function getLiveBlock(operator, showMap) {
   if (!operator.live_widget_enabled) return null;
 
-  const rows = await pgGet(
+  const allRows = await pgGet(
     `live_trips?operator_id=eq.${operator.id}&ended_at=is.null` +
-    `&select=started_at,last_seen_at,status_species,status_at,track,sightings` +
+    `&select=started_at,last_seen_at,status_species,status_at,track,sightings,boat_id,boat_name` +
     `&order=last_seen_at.desc&limit=10`
   );
-  if (!rows || !rows.length) return null;
+  if (!allRows || !allRows.length) return null;
 
   const now = Date.now();
+  const rows = allRows.filter(r => now - Date.parse(r.last_seen_at) <= LIVE_STALE_MINUTES * 60000);
+  if (!rows.length) return null;
+
+  // Per-boat color, same assignment as the FlukeSend boat QR cards: one
+  // palette color per roster boat in boat order, so the live line matches
+  // the color crews already know from the boat's QR code. Only resolved
+  // when a broadcasting client identified its boat; older clients get null
+  // and the widget renders them in the standard single-boat red.
+  const BOAT_COLORS = ['#1f3a8a', '#0f5a4e', '#8a2b3a', '#5b3a8a', '#7a4a12', '#245a3a'];
+  const colorByBoatId = {};
+  if (rows.some(r => r.boat_id)) {
+    const roster = await pgGet(
+      `boats?operator_id=eq.${operator.id}&select=id&order=sort_order.asc,created_at.asc&limit=24`
+    );
+    (roster || []).forEach((b, i) => { colorByBoatId[b.id] = BOAT_COLORS[i % BOAT_COLORS.length]; });
+  }
+
   const delayMin = Math.max(0, +operator.live_delay_minutes || 0);
   // Publish only points that have aged past the delay, snapped to the fuzz
   // grid. Consecutive points landing in the same grid cell collapse to one,
@@ -95,13 +112,17 @@ async function getLiveBlock(operator, showMap) {
 
   const boats = [];
   for (const row of rows) {
-    if (now - Date.parse(row.last_seen_at) > LIVE_STALE_MINUTES * 60000) continue;
-
     const boat = {
       started_at: row.started_at,
       species: row.status_species || null,
+      // When the species is fresh the boat is "watching"; once it ages out,
+      // species_at lets the widget say when it was last spotted instead of
+      // reverting to a bare "searching."
+      species_at: row.status_at || null,
       watching: !!(row.status_species && row.status_at &&
         now - Date.parse(row.status_at) <= WATCHING_WINDOW_MINUTES * 60000),
+      boat_name: row.boat_name || null,
+      color: (row.boat_id && colorByBoatId[row.boat_id]) || null,
       position: null,
       track: [],
       sightings: [],

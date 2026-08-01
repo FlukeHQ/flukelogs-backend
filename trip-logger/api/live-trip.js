@@ -14,7 +14,14 @@
 
 const { authenticate } = require('../lib/auth');
 
-const TRACK_CAP = 720;            // ~12h of 1/min batches — plenty for any trip
+const TRACK_CAP = 720;            // hard row-size backstop
+// Keep at most one stored point per this many ms. The app records a GPS fix
+// every ~2-3 seconds, so an unthinned track hits TRACK_CAP in ~30 minutes
+// and the head of the route falls off — the widget's live line ends up
+// covering only the recent past instead of the whole trip. Thinned at 20s,
+// the cap holds 4 hours, longer than any departure, and the published line
+// loses nothing: widget-data snaps points to a ~0.6nm grid anyway.
+const TRACK_MIN_SPACING_MS = 20000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function pgHeaders(extra) {
@@ -44,6 +51,35 @@ async function upsertRow(body) {
     body: JSON.stringify([body]),
   });
   if (!res.ok) throw new Error(`live_trips upsert ${res.status}: ${(await res.text()).slice(0, 150)}`);
+}
+
+// Thin a chronological track to TRACK_MIN_SPACING_MS between kept points,
+// always keeping the newest point so the boat marker sits at the freshest
+// position. Runs on the full track every heartbeat: already-thinned points
+// stay put and each new batch contributes its handful of keepers.
+function thinTrack(track) {
+  const out = [];
+  let lastKept = -Infinity;
+  for (const p of track) {
+    const t = Date.parse(p && p.t);
+    if (!Number.isFinite(t)) continue;
+    if (t - lastKept >= TRACK_MIN_SPACING_MS) { out.push(p); lastKept = t; }
+  }
+  const newest = track[track.length - 1];
+  if (newest && out[out.length - 1] !== newest) out.push(newest);
+  return out.slice(-TRACK_CAP);
+}
+
+// Boat identity, sent by roster-aware app clients so the widget can tell
+// two live boats apart. Optional: absent or malformed values are simply not
+// written, and merge-duplicates upserts leave the stored columns untouched.
+function boatFields(body) {
+  const fields = {};
+  if (UUID_RE.test(String(body.boatId || ''))) fields.boat_id = body.boatId;
+  if (typeof body.boatName === 'string' && body.boatName.trim()) {
+    fields.boat_name = body.boatName.trim().slice(0, 80);
+  }
+  return fields;
 }
 
 function cleanPoints(points) {
@@ -81,26 +117,26 @@ module.exports = async function handler(req, res) {
 
     if (action === 'heartbeat') {
       const incoming = cleanPoints(req.body.points);
-      const track = ((existing && existing.track) || []).concat(incoming).slice(-TRACK_CAP);
-      await upsertRow({
+      const track = thinTrack(((existing && existing.track) || []).concat(incoming));
+      await upsertRow(Object.assign({
         trip_id: tripId,
         operator_id: operatorId,
         last_seen_at: nowISO,
         track,
         ended_at: null,
-      });
+      }, boatFields(req.body)));
       return res.status(200).json({ ok: true, points: track.length });
     }
 
     if (action === 'status') {
       const species = String(req.body.species || '').slice(0, 80) || null;
-      const update = {
+      const update = Object.assign({
         trip_id: tripId,
         operator_id: operatorId,
         last_seen_at: nowISO,
         status_species: species,
         status_at: species ? nowISO : null,
-      };
+      }, boatFields(req.body));
       // When the app knows where the sighting happened, append it as a live
       // dot. Ephemeral, append-only (mid-trip edits/deletes don't sync — the
       // report at trip end is the real record). Cap like the track.
