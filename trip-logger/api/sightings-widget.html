@@ -773,6 +773,7 @@ const sm = n => SPECIES_META[n] || SPECIES_META['default'];
 let allData = [];
 let tripAudioByTrip = new Map(); // trip_id -> { audio_url, duration_seconds }
 let tripPhotosByTrip = new Map(); // trip_id -> [ { id, photo_url } ]
+let tripMetaByTrip = new Map(); // trip_id -> { boat_name, trip_time }
 let tripTrackById  = new Map();  // trip_id -> [ {lat,lng,t}, … ]  (Phase 2 breadcrumbs)
 let activeFilter = null;   // species name or null
 let activeTripKey = null;  // selected trip_id or null
@@ -923,6 +924,27 @@ function loadWidgetData() {
 async function fetchSightings() {
   const data = await loadWidgetData();
   return Array.isArray(data.sightings) ? data.sightings : [];
+}
+
+// "09:00" (roster 24h format) -> "9:00 AM" for visitor-facing card titles.
+// Empty string when the departure is missing or unparsable, so callers can
+// fall back to the daypart label.
+function fmtDepartureTime(t) {
+  if (!t) return '';
+  const parts = String(t).split(':');
+  const h = Number(parts[0]);
+  if (!Number.isFinite(h) || h < 0 || h > 23) return '';
+  const m = Number(parts[1]) || 0;
+  return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+// Roster facts per trip from the boat app (boat name, scheduled departure).
+// Returns Map(trip_id -> { boat_name, trip_time }); empty for pre-roster
+// trips and for feeds served before trip_meta existed.
+async function fetchTripMeta() {
+  const data = await loadWidgetData();
+  const meta = (data.trip_meta && typeof data.trip_meta === 'object') ? data.trip_meta : {};
+  return new Map(Object.entries(meta));
 }
 
 // Captain audio notes per trip. Returns Map(trip_id -> { audio_url,
@@ -1813,9 +1835,23 @@ function renderFeed(data) {
   document.getElementById('feed-count').textContent = `${trips.length} trip${trips.length !== 1 ? 's' : ''}`;
   if (!trips.length) { list.innerHTML = '<div class="state-msg">No sightings recorded yet.</div>'; return; }
 
+  // Days with more than one trip get the scheduled departure and boat name
+  // in the card title, so "9:00 AM · Princess" and "10:00 AM · Atlantis"
+  // read apart ("Morning" twice does not). The daypart stays as the
+  // fallback when a trip has no stamped departure, and single-trip days
+  // keep the exact title they always had.
+  const tripsPerDate = {};
+  trips.forEach(([, sightings]) => {
+    const d = (sightings[0].trip_date || '').slice(0, 10);
+    tripsPerDate[d] = (tripsPerDate[d] || 0) + 1;
+  });
+
   list.innerHTML = trips.map(([tripKey, sightings]) => {
     const tripDate = (sightings[0].trip_date || '').slice(0, 10);
     const tripPart = sightings[0].trip_part || '';
+    const meta = tripsPerDate[tripDate] > 1 ? (tripMetaByTrip.get(tripKey) || {}) : {};
+    const boatName = meta.boat_name || '';
+    const timeLabel = fmtDepartureTime(meta.trip_time) || tripPart;
     const totalAnimals = sightings.reduce((sum, s) => sum + (parseInt(s.count) || 1), 0);
     const tallied = tallyBySpecies(sightings);
     const rows = tallied.map(([species, d]) => {
@@ -1859,7 +1895,7 @@ function renderFeed(data) {
       <div class="trip-date-header" data-trip="${tripKey}">
         <div class="trip-date-label">
           <span class="active-indicator"></span>
-          ${fmtDate(tripDate)}${tripPart ? ' · ' + tripPart : ''}
+          ${fmtDate(tripDate)}${timeLabel ? ' · ' + timeLabel : ''}${boatName ? ' · ' + boatName : ''}
         </div>
         <div class="trip-date-right">
           <div class="trip-summary">${tallied.length} species &middot; ${totalAnimals} animals</div>
@@ -2360,8 +2396,8 @@ function applyInitialTripFromUrl() {
     return;
   }
   try {
-    [allData, tripAudioByTrip, tripTrackById, tripPhotosByTrip] = await Promise.all([
-      fetchSightings(), fetchTripAudio(), fetchTripTracks(), fetchTripPhotos()
+    [allData, tripAudioByTrip, tripTrackById, tripPhotosByTrip, tripMetaByTrip] = await Promise.all([
+      fetchSightings(), fetchTripAudio(), fetchTripTracks(), fetchTripPhotos(), fetchTripMeta()
     ]);
     renderNowBanner(allData);
     renderLegend(allData);
