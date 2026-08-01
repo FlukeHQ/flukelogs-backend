@@ -25,7 +25,14 @@ const OPERATOR_EDITABLE = [
   'species_list',
   'show_map_on_widget',
   'widget_host_url',
+  'live_widget_enabled',
+  'live_delay_minutes',
 ];
+
+// The delay choices Settings offers. Anything else in a PATCH is rejected;
+// legacy values already on the row (e.g. the old 0.5 default) are untouched
+// until the operator actively picks one of these.
+const LIVE_DELAY_CHOICES = [5, 10, 15];
 
 // Sensitive fields where an empty-string PATCH means "keep current value."
 // Empty now that the email credentials are gone; kept so a future secret
@@ -44,6 +51,9 @@ function operatorSettingsView(operator) {
     species_list:             operator.species_list || [],
     show_map_on_widget:       operator.show_map_on_widget !== false,
     widget_host_url:          operator.widget_host_url || null,
+    live_widget_enabled:      operator.live_widget_enabled === true,
+    live_delay_minutes:       Number.isFinite(+operator.live_delay_minutes)
+                                ? +operator.live_delay_minutes : null,
     // Read-only here (admin-managed): branded domain serving the widget
     // standalone. Settings uses it to generate the embed snippet's src.
     widget_standalone_url:    operator.widget_standalone_url || null,
@@ -100,7 +110,13 @@ module.exports = async function handler(req, res) {
       if (field === 'species_list' && !Array.isArray(val)) {
         return res.status(400).json({ error: 'species_list must be an array' });
       }
-      updates[field] = val;
+      if (field === 'live_widget_enabled' && typeof val !== 'boolean') {
+        return res.status(400).json({ error: 'live_widget_enabled must be a boolean' });
+      }
+      if (field === 'live_delay_minutes' && !LIVE_DELAY_CHOICES.includes(+val)) {
+        return res.status(400).json({ error: `live_delay_minutes must be one of ${LIVE_DELAY_CHOICES.join(', ')}` });
+      }
+      updates[field] = field === 'live_delay_minutes' ? +val : val;
     }
 
     if (Object.keys(updates).length === 0) {

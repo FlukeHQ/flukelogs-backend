@@ -1351,6 +1351,25 @@
         <input type="checkbox" id="settingsShowMapOnWidget" class="toggle-switch">
       </label>
 
+      <label class="toggle-row" for="settingsLiveWidget" style="margin-top:14px;">
+        <div class="toggle-row-text">
+          <div class="toggle-row-title">Show live boat while on the water</div>
+          <div class="toggle-row-help">While a trip is running, the widget shows a live banner with what you're currently watching, plus the boat's position and route on the map. The position is delayed (below) and snapped to a coarse grid, so the exact spot is never published.</div>
+        </div>
+        <input type="checkbox" id="settingsLiveWidget" class="toggle-switch">
+      </label>
+
+      <div class="field" style="margin-top:18px;">
+        <label>Live Position Delay</label>
+        <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px;line-height:1.5;">How far behind the real boat the public map runs. Visitors still see the route unfold; nobody can steer to your spot in real time.</p>
+        <div class="seg" data-target="settingsLiveDelay">
+          <button type="button" data-value="5">5 min</button>
+          <button type="button" data-value="10">10 min</button>
+          <button type="button" data-value="15">15 min</button>
+        </div>
+        <input type="hidden" id="settingsLiveDelay">
+      </div>
+
       <div class="field" style="margin-top:18px;">
         <label>Widget Host URL <span style="color:var(--text-dim);font-weight:500;text-transform:none;letter-spacing:0;">(where you've embedded the widget on your site)</span></label>
         <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px;line-height:1.5;">When visitors tap a trip's Share button inside the widget, the shared link points here. Leave blank to share the bare widget URL on our domain instead.</p>
@@ -3686,6 +3705,14 @@
     showLogoPreview('settingsLogoUrlPreview',      cfg.logo_url);
     showLogoPreview('settingsLogoUrlEmailPreview', cfg.logo_url_email);
     document.getElementById('settingsShowMapOnWidget').checked = cfg.show_map_on_widget !== false;
+    document.getElementById('settingsLiveWidget').checked = cfg.live_widget_enabled === true;
+    // Delay pills: highlight the saved choice. A legacy value that predates
+    // the 5/10/15 picker (e.g. the old 0.5 default) selects nothing, and
+    // saving without picking leaves it untouched.
+    const delayPill = [5, 10, 15].includes(+cfg.live_delay_minutes) ? String(+cfg.live_delay_minutes) : '';
+    document.querySelectorAll('.seg[data-target="settingsLiveDelay"] button').forEach(b =>
+      b.classList.toggle('on', b.dataset.value === delayPill));
+    document.getElementById('settingsLiveDelay').value = delayPill;
     document.getElementById('settingsWidgetHostUrl').value = cfg.widget_host_url || '';
     populateEmbedCode(cfg);
     updateEmbedShareHint();
@@ -3957,7 +3984,12 @@
       species_list:            serializeSpeciesGroups(),
       show_map_on_widget:      document.getElementById('settingsShowMapOnWidget').checked,
       widget_host_url:         document.getElementById('settingsWidgetHostUrl').value.trim() || null,
+      live_widget_enabled:     document.getElementById('settingsLiveWidget').checked,
     };
+    // Only send a delay when a pill is actually selected — an untouched
+    // legacy value stays exactly as it is.
+    const liveDelay = document.getElementById('settingsLiveDelay').value;
+    if (liveDelay) body.live_delay_minutes = +liveDelay;
 
     try {
       const res = await fetch('/api/operator-settings', {
