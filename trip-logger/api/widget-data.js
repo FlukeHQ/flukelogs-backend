@@ -64,72 +64,86 @@ async function pgGet(pathAndQuery) {
   return res.json();
 }
 
-// Builds the public `live` block from the operator's newest active broadcast.
-// Returns null when the layer is off, nothing is live, or the heartbeat went
+// Builds the public `live` block from the operator's active broadcasts.
+// Returns null when the layer is off, nothing is live, or every heartbeat went
 // stale. All delay/fuzz math happens here — raw live_trips rows never leave.
+//
+// An operator can have several boats broadcasting at once (two departures on
+// the water together), so the block carries a `boats` array with one entry
+// per live broadcast. The legacy single-boat fields stay on the block itself,
+// mirroring boats[0], so widget pages loaded before this shape existed keep
+// working — and with one boat out the response is identical to what it
+// always was.
 async function getLiveBlock(operator, showMap) {
   if (!operator.live_widget_enabled) return null;
 
   const rows = await pgGet(
     `live_trips?operator_id=eq.${operator.id}&ended_at=is.null` +
     `&select=started_at,last_seen_at,status_species,status_at,track,sightings` +
-    `&order=last_seen_at.desc&limit=1`
+    `&order=last_seen_at.desc&limit=10`
   );
-  const row = rows && rows[0];
-  if (!row) return null;
+  if (!rows || !rows.length) return null;
 
   const now = Date.now();
-  if (now - Date.parse(row.last_seen_at) > LIVE_STALE_MINUTES * 60000) return null;
-
   const delayMin = Math.max(0, +operator.live_delay_minutes || 0);
-  const watching = !!(row.status_species && row.status_at &&
-    now - Date.parse(row.status_at) <= WATCHING_WINDOW_MINUTES * 60000);
-
-  const live = {
-    active: true,
-    started_at: row.started_at,
-    species: row.status_species || null,
-    watching,
-    delay_minutes: delayMin,
-    position: null,
-    track: [],
-    sightings: [],
-  };
-  if (!showMap) return live; // status only — same GPS opt-out as sightings
-
   // Publish only points that have aged past the delay, snapped to the fuzz
   // grid. Consecutive points landing in the same grid cell collapse to one,
   // so the polyline stays a path instead of a stutter of duplicates.
   const fuzz = +operator.live_fuzz_deg > 0 ? +operator.live_fuzz_deg : 0.01;
   const snap = v => +(Math.round(v / fuzz) * fuzz).toFixed(6);
   const cutoff = now - delayMin * 60000;
-  const points = Array.isArray(row.track) ? row.track : [];
-  for (const p of points) {
-    const t = Date.parse(p && p.t);
-    if (!Number.isFinite(t) || t > cutoff) continue;
-    if (!Number.isFinite(+p.lat) || !Number.isFinite(+p.lng)) continue;
-    const pt = { lat: snap(+p.lat), lng: snap(+p.lng), t: p.t };
-    const prev = live.track[live.track.length - 1];
-    if (prev && prev.lat === pt.lat && prev.lng === pt.lng) { prev.t = pt.t; continue; }
-    live.track.push(pt);
-  }
-  live.position = live.track[live.track.length - 1] || null;
 
-  // Mid-trip sightings become live dots — same delay + fuzz as the boat,
-  // since each dot says where the animals are right now.
-  for (const s of (Array.isArray(row.sightings) ? row.sightings : [])) {
-    const t = Date.parse(s && s.t);
-    if (!Number.isFinite(t) || t > cutoff) continue;
-    if (!Number.isFinite(+s.lat) || !Number.isFinite(+s.lng)) continue;
-    live.sightings.push({
-      species: s.species || null,
-      count: Number.isFinite(+s.count) ? +s.count : null,
-      lat: snap(+s.lat),
-      lng: snap(+s.lng),
-      t: s.t,
-    });
+  const boats = [];
+  for (const row of rows) {
+    if (now - Date.parse(row.last_seen_at) > LIVE_STALE_MINUTES * 60000) continue;
+
+    const boat = {
+      started_at: row.started_at,
+      species: row.status_species || null,
+      watching: !!(row.status_species && row.status_at &&
+        now - Date.parse(row.status_at) <= WATCHING_WINDOW_MINUTES * 60000),
+      position: null,
+      track: [],
+      sightings: [],
+    };
+
+    if (showMap) { // status only otherwise — same GPS opt-out as sightings
+      const points = Array.isArray(row.track) ? row.track : [];
+      for (const p of points) {
+        const t = Date.parse(p && p.t);
+        if (!Number.isFinite(t) || t > cutoff) continue;
+        if (!Number.isFinite(+p.lat) || !Number.isFinite(+p.lng)) continue;
+        const pt = { lat: snap(+p.lat), lng: snap(+p.lng), t: p.t };
+        const prev = boat.track[boat.track.length - 1];
+        if (prev && prev.lat === pt.lat && prev.lng === pt.lng) { prev.t = pt.t; continue; }
+        boat.track.push(pt);
+      }
+      boat.position = boat.track[boat.track.length - 1] || null;
+
+      // Mid-trip sightings become live dots — same delay + fuzz as the boat,
+      // since each dot says where the animals are right now.
+      for (const s of (Array.isArray(row.sightings) ? row.sightings : [])) {
+        const t = Date.parse(s && s.t);
+        if (!Number.isFinite(t) || t > cutoff) continue;
+        if (!Number.isFinite(+s.lat) || !Number.isFinite(+s.lng)) continue;
+        boat.sightings.push({
+          species: s.species || null,
+          count: Number.isFinite(+s.count) ? +s.count : null,
+          lat: snap(+s.lat),
+          lng: snap(+s.lng),
+          t: s.t,
+        });
+      }
+    }
+    boats.push(boat);
   }
-  return live;
+  if (!boats.length) return null;
+
+  return Object.assign({}, boats[0], {
+    active: true,
+    delay_minutes: delayMin,
+    boats,
+  });
 }
 
 module.exports = async function handler(req, res) {
