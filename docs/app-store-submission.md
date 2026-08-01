@@ -120,33 +120,56 @@ apps or websites owned by other companies. You do NOT need an ATT prompt.
 
 ## 8. App Review information (reviewer notes)
 
-Sign-in required. Provide a working demo account or the reviewer cannot test.
+Paste into App Store Connect > App Review Information > Notes. Kept current
+here so it does not have to be rewritten from memory each submission.
+
+The demo account email is below; the password lives in the founder's password
+manager, deliberately not in this repo. A reviewer cannot test without it, so
+check both fields are filled in App Store Connect before submitting.
 
 ```
-This app is used by marine tour operators and their crew to log trips and
-wildlife sightings. An operator account is required.
+Flukelogs is a business tool for marine tour operators and their crew. Accounts
+are provisioned by the operator, there is no public sign up, and the app is
+distributed unlisted (approved by Developer Support, case 102937531840). The
+Code of Conduct matter from earlier submissions was resolved by the App Review
+Board under APL512795.
 
-Demo account:
-  Email:    << demo captain email >>
-  Password: << demo captain password >>
+DEMO ACCOUNT
+  Email:    appreview@enoceantours.com
+  Password: << from the password manager >>
+  Signs in to Bayside Whale Watch, a demo operator with sample trips.
 
-How to test:
-  1. Sign in with the demo account above.
-  2. On the Start screen, enter a passenger count and tap Start Trip.
-  3. The app begins recording GPS location to draw the route and calculate
-     distance. Tap to add a wildlife sighting (species, count, notes).
-  4. Tap End Trip to finish.
+NEW IN THIS VERSION: MICROPHONE
+Captains record a short spoken recap of a trip, which guests play from the
+operator's public sightings page. Nothing else uses the microphone and it is
+never accessed in the background.
 
-Background location: the app requests "Always" location so it can keep
-recording the vessel's route while the screen is locked during an active
-trip. Location is collected ONLY while a trip is running and stops when the
-trip ends. It is used solely to record the route and compute distance, never
-for advertising, and is not sold.
+  1. Sign in with the demo account.
+  2. Open the menu and tap Past Trips.
+  3. Tap the July 18 trip. It already has a saved note, shown as
+     "Audio · 0:18", which plays in place.
+  4. To record a new one, tap "Tap to record", speak, stop, then Save audio.
+
+BACKGROUND LOCATION (unchanged from the approved build)
+The app requests Always location so it keeps recording the vessel's route
+while the screen is locked during a trip. This is the core function: the
+route, the distance in nautical miles, and the operator's live boat map all
+depend on it. Location is collected only while a trip is running, stops at
+End Trip, and is never used for advertising or sold. It cannot be exercised
+at a desk, since it requires starting a trip and physically moving while the
+app is backgrounded.
+
+  1. Sign in, choose a boat and departure, tap Start Trip.
+  2. Background the app and move a short distance.
+  3. Reopen: distance and the recorded track have both grown.
+
+CAMERA AND PHOTO LIBRARY
+Captains attach photos to a trip gallery, shown on the operator's public
+sightings page. Reached from the same Past Trips screen as the voice note.
 ```
 
-> ACTION: create a dedicated demo captain account (its own operator or a test
-> operator) so you are not handing Apple your real login. I can help set one up
-> in Supabase when you are ready.
+If the camera and photo library usage strings are not in the build being
+submitted, drop that last paragraph.
 
 ---
 
