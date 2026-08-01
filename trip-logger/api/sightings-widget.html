@@ -1321,8 +1321,8 @@ function renderNowBanner(data) {
 // transformed server-side; the widget just paints what it's given. Polls
 // ?live=1 once a minute and reverts cleanly when the broadcast ends.
 const LIVE_POLL_MS = 60000;
-let liveBoatMarker = null;
-let liveTrackLine = null;
+let liveBoatMarkers = [];
+let liveTrackLines = [];
 let liveSightingMarkers = [];
 // While broadcasting, refreshMarkers() suppresses past-trip pins unless the
 // visitor explicitly selects a trip or species.
@@ -1342,10 +1342,36 @@ function fmtClock(iso) {
 }
 
 function clearLiveMapLayers() {
-  if (liveBoatMarker) { map.removeLayer(liveBoatMarker); liveBoatMarker = null; }
-  if (liveTrackLine)  { map.removeLayer(liveTrackLine);  liveTrackLine = null; }
+  liveBoatMarkers.forEach(m => map.removeLayer(m));
+  liveBoatMarkers = [];
+  liveTrackLines.forEach(l => map.removeLayer(l));
+  liveTrackLines = [];
   liveSightingMarkers.forEach(m => map.removeLayer(m));
   liveSightingMarkers = [];
+}
+
+// The live block carries one entry per broadcasting boat in `boats`; older
+// responses (or a mid-deploy poll) have only the single-boat fields on the
+// block itself, which is also exactly what boats[0] mirrors.
+function liveBoats(live) {
+  if (!live || !live.active) return [];
+  return (Array.isArray(live.boats) && live.boats.length) ? live.boats : [live];
+}
+
+// Banner + kiosk overlay share one summary of the fleet: what's being
+// watched (across every boat) and since when. With one boat out the text is
+// identical to what the single-boat widget always said.
+function liveStatusText(live) {
+  const boats = liveBoats(live);
+  const watched = [...new Set(boats.filter(b => b.watching && b.species).map(b => b.species))];
+  const species = watched.length
+    ? `Currently watching ${watched.join(' & ')}`
+    : 'Out searching for the next sighting';
+  const starts = boats.map(b => Date.parse(b.started_at)).filter(Number.isFinite);
+  const since = starts.length ? fmtClock(new Date(Math.min(...starts)).toISOString()) : null;
+  let meta = since ? `On the water since ${since}` : '';
+  if (boats.length > 1) meta = `${boats.length} boats out${meta ? ' · ' + meta : ''}`;
+  return { species, meta };
 }
 
 function renderLive(live) {
@@ -1388,62 +1414,70 @@ function renderLive(live) {
   }
   banner.classList.add('is-live');
   label.textContent = 'Live · On the water now';
-  document.getElementById('now-species').textContent =
-    (live.watching && live.species)
-      ? `Currently watching ${live.species}`
-      : 'Out searching for the next sighting';
-  const since = fmtClock(live.started_at);
-  document.getElementById('now-meta').textContent = since ? `On the water since ${since}` : '';
+  const status = liveStatusText(live);
+  document.getElementById('now-species').textContent = status.species;
+  document.getElementById('now-meta').textContent = status.meta;
   banner.style.display = 'flex';
 
   if (!map) return;
   clearLiveMapLayers();
-  // Live sighting dots — logged mid-trip, published with the same delay +
-  // fuzz as the boat. Same species colors as the permanent pins.
-  (live.sightings || []).forEach(s => {
-    if (!Number.isFinite(+s.lat) || !Number.isFinite(+s.lng)) return;
-    const meta = sm(s.species);
-    const m = meta.isSplit
-      ? L.marker([+s.lat, +s.lng], { icon: createOrcaIcon(), zIndexOffset: 900 })
-      : L.circleMarker([+s.lat, +s.lng], {
-          radius: 8, fillColor: meta.color, color: meta.borderColor || '#000',
-          weight: 2, fillOpacity: 0.95,
-        });
-    const when = fmtClock(s.t);
-    m.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
-      <strong style="font-size:13px;">${meta.icon} ${s.species || 'Sighting'}</strong><br>
-      ${s.count ? `Count: <strong>${s.count}</strong><br>` : ''}Spotted ${when || 'just now'} &middot; live
-    </div>`);
-    m.addTo(map);
-    liveSightingMarkers.push(m);
+  const boats = liveBoats(live);
+  boats.forEach(boat => {
+    // Live sighting dots — logged mid-trip, published with the same delay +
+    // fuzz as the boat. Same species colors as the permanent pins.
+    (boat.sightings || []).forEach(s => {
+      if (!Number.isFinite(+s.lat) || !Number.isFinite(+s.lng)) return;
+      const meta = sm(s.species);
+      const m = meta.isSplit
+        ? L.marker([+s.lat, +s.lng], { icon: createOrcaIcon(), zIndexOffset: 900 })
+        : L.circleMarker([+s.lat, +s.lng], {
+            radius: 8, fillColor: meta.color, color: meta.borderColor || '#000',
+            weight: 2, fillOpacity: 0.95,
+          });
+      const when = fmtClock(s.t);
+      m.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
+        <strong style="font-size:13px;">${meta.icon} ${s.species || 'Sighting'}</strong><br>
+        ${s.count ? `Count: <strong>${s.count}</strong><br>` : ''}Spotted ${when || 'just now'} &middot; live
+      </div>`);
+      m.addTo(map);
+      liveSightingMarkers.push(m);
+    });
+    const pts = (boat.track || []).map(p => [+p.lat, +p.lng]);
+    if (pts.length > 1) {
+      liveTrackLines.push(L.polyline(pts, {
+        color: '#ff6b6b', weight: 2.5, opacity: 0.8, dashArray: '4 6', interactive: false,
+      }).addTo(map));
+    }
+    if (boat.position) {
+      const size = 26;
+      const marker = L.marker([+boat.position.lat, +boat.position.lng], {
+        icon: L.divIcon({
+          html: '<div class="live-boat" style="width:' + size + 'px;height:' + size + 'px;"><div class="ping"></div><div class="core"></div></div>',
+          className: '',
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2],
+        }),
+        zIndexOffset: 1000,
+      }).addTo(map);
+      marker.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
+        <strong style="font-size:13px;">⛵ Out on the water now</strong><br>
+        Approximate position
+      </div>`);
+      liveBoatMarkers.push(marker);
+    }
   });
-  const pts = (live.track || []).map(p => [+p.lat, +p.lng]);
-  if (pts.length > 1) {
-    liveTrackLine = L.polyline(pts, {
-      color: '#ff6b6b', weight: 2.5, opacity: 0.8, dashArray: '4 6', interactive: false,
-    }).addTo(map);
-  }
-  if (live.position) {
-    const size = 26;
-    liveBoatMarker = L.marker([+live.position.lat, +live.position.lng], {
-      icon: L.divIcon({
-        html: '<div class="live-boat" style="width:' + size + 'px;height:' + size + 'px;"><div class="ping"></div><div class="core"></div></div>',
-        className: '',
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2],
-      }),
-      zIndexOffset: 1000,
-    }).addTo(map);
-    liveBoatMarker.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
-      <strong style="font-size:13px;">⛵ Out on the water now</strong><br>
-      Approximate position
-    </div>`);
-    if (!liveViewFitted) {
-      liveViewFitted = true;
-      const ll = L.latLng(+live.position.lat, +live.position.lng);
-      if (!map.getBounds().contains(ll) && boatNearGrounds(ll)) {
-        map.flyToBounds(map.getBounds().extend(ll), { padding: [40, 40], maxZoom: map.getZoom() });
-      }
+  // One-shot per broadcast: widen the view so every boat on the water is in
+  // frame the first time the live layer appears.
+  if (!liveViewFitted && liveBoatMarkers.length) {
+    liveViewFitted = true;
+    let bounds = map.getBounds();
+    let widened = false;
+    liveBoatMarkers.forEach(m => {
+      const ll = m.getLatLng();
+      if (!bounds.contains(ll) && boatNearGrounds(ll)) { bounds = bounds.extend(ll); widened = true; }
+    });
+    if (widened) {
+      map.flyToBounds(bounds, { padding: [40, 40], maxZoom: map.getZoom() });
     }
   }
 }
@@ -1460,12 +1494,9 @@ function updateLiveOverlay() {
   const ov = document.getElementById('live-overlay');
   if (!ov) return;
   if (mapIsFull && lastLive) {
-    document.getElementById('ov-species').textContent =
-      (lastLive.watching && lastLive.species)
-        ? `Currently watching ${lastLive.species}`
-        : 'Out searching for the next sighting';
-    const since = fmtClock(lastLive.started_at);
-    document.getElementById('ov-meta').textContent = since ? `On the water since ${since}` : '';
+    const status = liveStatusText(lastLive);
+    document.getElementById('ov-species').textContent = status.species;
+    document.getElementById('ov-meta').textContent = status.meta;
     ov.classList.add('on');
   } else {
     ov.classList.remove('on');
@@ -1490,17 +1521,19 @@ function boatNearGrounds(ll) {
   return map.distance(b.getCenter(), ll) <= Math.max(span * 2, 60000);
 }
 
-// Frame everything the widget knows about — every trip's pins plus the live
+// Frame everything the widget knows about — every trip's pins plus each live
 // boat and its track (when it's actually out on the grounds). For a bay
 // operator this lands on the whole-bay view (Santa Cruz down to Monterey)
 // that reads well on a TV.
 function fitFullView() {
   if (!map) return;
   const b = pinBounds();
-  if (liveBoatMarker && boatNearGrounds(liveBoatMarker.getLatLng())) {
-    b.extend(liveBoatMarker.getLatLng());
-    if (liveTrackLine) b.extend(liveTrackLine.getBounds());
-  }
+  liveBoatMarkers.forEach(m => {
+    if (boatNearGrounds(m.getLatLng())) b.extend(m.getLatLng());
+  });
+  liveTrackLines.forEach(l => {
+    if (boatNearGrounds(l.getBounds().getCenter())) b.extend(l.getBounds());
+  });
   if (b.isValid()) map.fitBounds(b, { padding: [60, 60] });
 }
 
