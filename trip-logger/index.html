@@ -2173,15 +2173,20 @@
   // time already past, else the first still ahead. A captain starting the
   // 9 AM at 9:05 gets 9:00 without touching anything.
   function defaultTripTime(times) {
+    // Nearest departure to right now, not the latest one already past: a
+    // captain starting the 10:00 at 9:50 must not default onto the 9:00
+    // (which another boat may be out running this very minute — the wrong
+    // stamp then poisons the send prefill match on multi-boat days).
     const now = new Date();
     const mins = now.getHours() * 60 + now.getMinutes();
-    let past = null;
+    let best = null, bestDist = Infinity;
     for (const t of times) {
       const parts = String(t).split(':');
       const v = (Number(parts[0]) || 0) * 60 + (Number(parts[1]) || 0);
-      if (v <= mins) past = t; else break;
+      const dist = Math.abs(v - mins);
+      if (dist < bestDist) { best = t; bestDist = dist; }
     }
-    return past || times[0] || null;
+    return best || times[0] || null;
   }
 
   function renderRosterPickers() {
