@@ -33,6 +33,16 @@ current.
   endpoints, so a direct PostgREST read returns nothing. Keep it that way.
 - Live production with real operators (Enocean, Princess) logging real trips.
   Be careful with data fixes; do not touch a trip that is currently live.
+- **The live layer is deliberately imprecise.** Positions published while a boat
+  is out are delayed (operator picks 5/10/15 min) and snapped to a coarse grid,
+  so nobody can steer to the boat or the animals in real time. Do not print
+  coordinates for a live boat or live sighting dot, do not shrink the delay
+  below the operator's setting, and do not add a "precise" mode. Finished trips
+  are a different matter: their positions are exact and public by design.
+- **Assume several boats are out at once.** Princess runs concurrent departures
+  with a photographer on each. Anything keyed to "the operator's current trip"
+  or "today's trip" is a bug waiting to happen; key on `trip_id`, and on
+  boat + date + departure when matching across to Flukesend.
 - No em dashes in copy or comments, matching the sister repo.
 
 ## Stack
