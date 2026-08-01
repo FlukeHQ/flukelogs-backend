@@ -2447,11 +2447,21 @@
     livePendingPoints = [];
   }
 
+  // Which boat is broadcasting — lets the widget tell two live boats apart
+  // (name in the popup, per-boat color). Roster-less operators have neither
+  // field set and the widget keeps its standard single-boat look.
+  function liveBoatFields() {
+    const fields = {};
+    if (trip.boatId) fields.boatId = trip.boatId;
+    if (trip.boatName) fields.boatName = trip.boatName;
+    return fields;
+  }
+
   async function liveBeat() {
     if (!trip.liveId) return;
     const points = livePendingPoints.splice(0);
     try {
-      await livePost({ action: 'heartbeat', tripId: trip.liveId, points });
+      await livePost(Object.assign({ action: 'heartbeat', tripId: trip.liveId, points }, liveBoatFields()));
     } catch (e) {
       // Signal drop mid-ocean is normal — re-queue for the next beat.
       livePendingPoints = points.concat(livePendingPoints);
@@ -2460,7 +2470,7 @@
 
   function liveStatus(species, count) {
     if (!trip.liveId) return;
-    const body = { action: 'status', tripId: trip.liveId, species };
+    const body = Object.assign({ action: 'status', tripId: trip.liveId, species }, liveBoatFields());
     if (Number.isFinite(+count)) body.count = +count;
     // Where the sighting happened — becomes a live dot on the public map
     // (delay+fuzz applied server-side). Omitted when GPS hasn't fixed yet.
