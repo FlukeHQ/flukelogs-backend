@@ -233,11 +233,32 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    // Per-trip roster facts from the boat app (boat name, scheduled
+    // departure), keyed by trip_id. Lets the widget tell two same-day trips
+    // apart ("Morning · Princess" vs "Morning · Atlantis"). Not location
+    // data, so not gated on the map opt-out; trips logged before the roster
+    // era (or operators without a roster) simply have no entry.
+    let tripMeta = {};
+    {
+      const tripIds = [...new Set(sightingRows.map(s => s.trip_id).filter(Boolean))];
+      if (tripIds.length) {
+        const metaRows = await pgGet(
+          `logbook_trips?operator_id=eq.${operatorId}` +
+          `&trip_id=in.(${tripIds.map(id => `"${id}"`).join(',')})` +
+          `&select=trip_id,boat_name,trip_time&limit=${FEED_LIMIT}`
+        );
+        for (const m of (metaRows || [])) {
+          tripMeta[m.trip_id] = { boat_name: m.boat_name || null, trip_time: m.trip_time || null };
+        }
+      }
+    }
+
     res.status(200).json({
       sightings: sightingRows,
       audio: audio || [],
       photos: photos || [],
       tracks,
+      trip_meta: tripMeta,
       live: live || null,
       show_map_on_widget: showMap,
     });
