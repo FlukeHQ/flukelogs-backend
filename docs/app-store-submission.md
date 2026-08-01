@@ -166,6 +166,15 @@ app is backgrounded.
 CAMERA AND PHOTO LIBRARY
 Captains attach photos to a trip gallery, shown on the operator's public
 sightings page. Reached from the same Past Trips screen as the voice note.
+
+NO EMAIL IS SENT FROM THIS APP
+Everything the app records (route, sightings, voice note, gallery photos)
+publishes to the operator's own sightings page. That is the app's complete
+function and needs nothing else to work. Sending photos on to guests is a
+separate task operators do in Flukesend, our own web product, and the link on
+the screen after a trip is logged is only a shortcut there. It opens in Safari
+and is not needed for anything in the app. There is no sign up, subscription,
+or purchase anywhere in the app.
 ```
 
 If the camera and photo library usage strings are not in the build being
