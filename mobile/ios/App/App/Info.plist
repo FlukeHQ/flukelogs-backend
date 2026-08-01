@@ -10,6 +10,10 @@
 	<string>Flukelogs keeps tracking your route while the screen is locked so your distance and breadcrumb path stay accurate for the whole trip.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Flukelogs uses the microphone when you record a voice note about a trip, which guests can play from your public sightings page.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Flukelogs uses the camera when you add a photo to a trip gallery straight from the boat, so guests can see the trip on your public sightings page.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Flukelogs opens your photo library when you add photos to a trip gallery, which guests can view on your public sightings page.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
