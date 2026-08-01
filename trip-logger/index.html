@@ -5117,7 +5117,12 @@
     }
     grid.innerHTML = currentTripPhotos.map(p =>
       '<div style="position:relative;width:84px;height:84px;border-radius:8px;overflow:hidden;background:#11151b;">' +
-        '<img src="' + p.photo_url.replace('/object/public/', '/render/image/public/') + '?width=200&quality=70&resize=cover" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">' +
+        // width AND height with cover: a real 200x200 center-crop square.
+        // Width alone with cover is the render endpoint's trap (see the
+        // 2026-06-27 widget bug): it returns a 200px-wide slice at the
+        // photo's full original height, which the tile's object-fit then
+        // crops AGAIN, so thumbnails looked wildly zoomed in.
+        '<img src="' + p.photo_url.replace('/object/public/', '/render/image/public/') + '?width=200&height=200&quality=70&resize=cover" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">' +
         '<button type="button" aria-label="Remove photo" onclick="deleteTripPhoto(\'' + p.id + '\')" ' +
           'style="position:absolute;top:2px;right:2px;width:22px;height:22px;border:none;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:15px;line-height:1;cursor:pointer;">&times;</button>' +
       '</div>'
