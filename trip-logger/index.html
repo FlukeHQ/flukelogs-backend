@@ -3214,6 +3214,24 @@
   }
 
   function startNewTrip() {
+    // Start New Trip and Discard Trip sit side by side on the review screen
+    // and wipe the trip identically, but only Discard asked first. A captain
+    // who ended a trip and reached for the wrong one lost a full morning:
+    // route, sightings, the lot, on a single tap with no warning. Ask when
+    // there is something real to lose, i.e. the trip was never logged and
+    // actually recorded something. Once logged, this is just the normal way
+    // to move on to the next departure, so it stays a single tap.
+    const recorded = trip.startTime ||
+      (trip.sightings && trip.sightings.length) ||
+      (trip.track && trip.track.length);
+    if (!trip.sentTripId && recorded) {
+      const ok = confirm(
+        'This trip has not been logged yet.\n\n' +
+        'Starting a new trip discards its route and sightings for good.\n\n' +
+        'Cancel, then tap Log Trip, to keep it.'
+      );
+      if (!ok) return;
+    }
     clearSavedTrip();
     trip = newTripState();
     guestGroups = [];
