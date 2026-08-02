@@ -3213,7 +3213,21 @@
     }
   }
 
-  function startNewTrip() {
+  // True when the trip on screen holds work that was never written to the
+  // logbook: the one state where wiping it actually costs the captain
+  // something. A logged trip is safe to clear, that is how you move on to
+  // the next departure.
+  function tripHasUnloggedWork() {
+    return !trip.sentTripId && !!(
+      trip.startTime ||
+      (trip.sightings && trip.sightings.length) ||
+      (trip.track && trip.track.length)
+    );
+  }
+
+  // Both buttons on the review screen land here. Neither asks: the callers
+  // do, so each one can word its own question and nobody sees two dialogs.
+  function resetTripState() {
     clearSavedTrip();
     trip = newTripState();
     guestGroups = [];
@@ -3239,8 +3253,27 @@
     });
   }
 
+  // Start New Trip and Discard Trip sit side by side on the review screen and
+  // wipe the trip identically, but only Discard ever asked. A captain who
+  // ended a trip and reached for the wrong one lost a whole morning, route
+  // and sightings both, on one tap with no warning. Both now name the real
+  // cost when the trip was never logged, and point at the way to keep it.
+  const UNLOGGED_WARNING =
+    'This trip has not been logged yet.\n\n' +
+    'THIS_ACTION discards its route and sightings for good.\n\n' +
+    'Cancel, then tap Log Trip, to keep it.';
+
+  function startNewTrip() {
+    if (tripHasUnloggedWork() &&
+        !confirm(UNLOGGED_WARNING.replace('THIS_ACTION', 'Starting a new trip'))) return;
+    resetTripState();
+  }
+
   function discardTrip() {
-    if (confirm('Discard this trip? This cannot be undone.')) startNewTrip();
+    const msg = tripHasUnloggedWork()
+      ? UNLOGGED_WARNING.replace('THIS_ACTION', 'Discarding it')
+      : 'Discard this trip? This cannot be undone.';
+    if (confirm(msg)) resetTripState();
   }
 
   let toastTimer;
