@@ -9,6 +9,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,400&family=JetBrains+Mono:wght@400;500&family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  // Embedded or standalone, decided before first paint so the styles below
+  // never flash the wrong way. Embedded, the HOST page scrolls and the
+  // iframe is auto-sized to our content, so our own scrollbar is a dead
+  // control: it renders a track next to the widget that cannot scroll.
+  try { if (window.parent !== window) document.documentElement.classList.add('is-embedded'); } catch (e) {
+    // Cross-origin access threw, which itself means we are framed.
+    document.documentElement.classList.add('is-embedded');
+  }
+</script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -45,6 +55,19 @@
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
   }
+  /* Embedded: no scrollbar of our own, and no 100vh floor. The floor would
+     pad a short widget (a new operator's first trip) out to a full screen of
+     empty gradient inside the host's page. Scrolling stays *possible* rather
+     than hidden behind overflow:hidden, so a mis-sized iframe can never trap
+     content out of reach; only the visible bar goes away. */
+  .is-embedded, .is-embedded body {
+    min-height: 0;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .is-embedded body::-webkit-scrollbar,
+  .is-embedded::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
   .widget-wrap { max-width: 860px; margin: 0 auto; padding: 28px 18px 40px; }
 
   /* ── Editorial header (Fraunces title + monospace date) ── */
