@@ -698,6 +698,16 @@
     <div class="state-msg"><div class="spinner"></div>Fetching sightings&hellip;</div>
   </div>
 
+  <!-- The feed serves the newest ~100 sightings; this pulls the season's
+       earlier trips in pages so June is still reachable in August. Hidden
+       until the first load says there is more. -->
+  <div id="feed-more-wrap" style="display:none; text-align:center; margin:14px 0 4px;">
+    <button id="feed-more-btn" type="button" onclick="loadEarlierTrips()"
+      style="background:none; border:1px solid var(--line, rgba(255,255,255,.14)); color:inherit; font:inherit; font-size:12.5px; letter-spacing:.08em; text-transform:uppercase; padding:9px 22px; border-radius:999px; cursor:pointer; opacity:.85;">
+      Show earlier trips
+    </button>
+  </div>
+
   <div class="cta-strip">
     <div class="cta-text">Spots are limited to 6 guests. Book early.</div>
     <a class="cta-btn" href="https://enoceantours.com/tours" target="_blank">Book a Trip &rarr;</a>
@@ -929,6 +939,53 @@ function loadWidgetData() {
 async function fetchSightings() {
   const data = await loadWidgetData();
   return Array.isArray(data.sightings) ? data.sightings : [];
+}
+
+// Backwards paging: the feed opens on the newest ~100 sightings and this
+// walks further into the season one page at a time. Older pages come
+// without breadcrumb tracks (pin-to-pin lines are fine for history) and
+// everything else merges into the same maps the first load filled.
+let feedNextBefore = null;
+let feedLoadingMore = false;
+
+function setFeedMoreVisible(on) {
+  const wrap = document.getElementById('feed-more-wrap');
+  if (wrap) wrap.style.display = on ? '' : 'none';
+}
+
+async function loadEarlierTrips() {
+  if (feedLoadingMore || !feedNextBefore) return;
+  feedLoadingMore = true;
+  const btn = document.getElementById('feed-more-btn');
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
+  try {
+    const op = OP.slug ? encodeURIComponent(OP.slug) : '';
+    const res = await fetch(`/api/widget-data?op=${op}&before=${encodeURIComponent(feedNextBefore)}`,
+      { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error(`widget-data ${res.status}`);
+    const page = await res.json();
+    (page.audio || []).forEach(r => { if (r.trip_id && !tripAudioByTrip.has(r.trip_id)) tripAudioByTrip.set(r.trip_id, r); });
+    (page.photos || []).forEach(r => {
+      if (!r.trip_id) return;
+      if (!tripPhotosByTrip.has(r.trip_id)) tripPhotosByTrip.set(r.trip_id, []);
+      tripPhotosByTrip.get(r.trip_id).push(r);
+    });
+    Object.entries(page.trip_meta || {}).forEach(([id, m]) => { if (!tripMetaByTrip.has(id)) tripMetaByTrip.set(id, m); });
+    allData = allData.concat(Array.isArray(page.sightings) ? page.sightings : []);
+    feedNextBefore = page.has_more ? page.next_before : null;
+    renderLegend(allData);
+    renderSegmentedRail(allData);
+    refreshMarkers();
+    renderFeed(allData);
+    if (typeof sendHeight === 'function') sendHeight();
+  } catch (e) {
+    if (btn) btn.textContent = 'Could not load, tap to retry';
+  } finally {
+    feedLoadingMore = false;
+    if (btn) { btn.disabled = false; if (btn.textContent === 'Loading\u2026') btn.textContent = label; }
+    setFeedMoreVisible(!!feedNextBefore);
+  }
 }
 
 // "09:00" (roster 24h format) -> "9:00 AM" for visitor-facing card titles.
@@ -2456,6 +2513,9 @@ function applyInitialTripFromUrl() {
     renderFeed(allData);
     // Live layer: paint from the feed we already have, then keep it fresh.
     const wd = await loadWidgetData();
+    // Arm backwards paging when the first load says the season goes deeper.
+    feedNextBefore = wd && wd.has_more ? wd.next_before : null;
+    setFeedMoreVisible(!!feedNextBefore);
     const liveNow = !!(wd && wd.live && wd.live.active);
     renderLive(wd && wd.live);
     setInterval(pollLive, LIVE_POLL_MS);

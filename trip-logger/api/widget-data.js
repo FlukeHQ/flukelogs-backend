@@ -178,9 +178,15 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'GET') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
   const liveOnly = !!(req.query && req.query.live);
+  // ?before=YYYY-MM-DD pages the feed backwards: strictly older trip days
+  // than the given date, same shape as the first load minus the live block
+  // and the breadcrumb tracks (old trips fall back to pin-to-pin lines,
+  // which keeps a season of history from ballooning the payload).
+  const beforeRaw = req.query && req.query.before;
+  const before = /^\d{4}-\d{2}-\d{2}$/.test(String(beforeRaw || '')) ? String(beforeRaw) : null;
   const empty = liveOnly
     ? { live: null }
-    : { sightings: [], audio: [], photos: [], live: null, show_map_on_widget: true };
+    : { sightings: [], audio: [], photos: [], live: null, show_map_on_widget: true, has_more: false, next_before: null };
 
   try {
     const slug = req.query && req.query.op;
@@ -205,26 +211,45 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    const [sightings, audio, photos, live] = await Promise.all([
+    const dateFilter = before ? `&trip_date=lt.${before}` : '';
+    const [sightingsRaw, audio, photos, live] = await Promise.all([
       pgGet(
-        `sightings?operator_id=eq.${operatorId}` +
+        `sightings?operator_id=eq.${operatorId}${dateFilter}` +
         `&select=trip_id,trip_part,trip_date,sighting_time,species,count,lat,lng,depth_meters,created_at` +
         `&order=trip_date.desc,created_at.desc&limit=${FEED_LIMIT}`
       ),
       pgGet(
-        `trip_audio?operator_id=eq.${operatorId}` +
+        `trip_audio?operator_id=eq.${operatorId}${dateFilter}` +
         `&select=trip_id,audio_url,duration_seconds,play_count` +
         `&order=trip_date.desc&limit=${FEED_LIMIT}`
       ),
       // Gallery photos per trip. Not location data, so returned regardless of
       // the map opt-out. Ordered so each trip's photos arrive in gallery order.
       pgGet(
-        `trip_photos?operator_id=eq.${operatorId}` +
+        `trip_photos?operator_id=eq.${operatorId}${dateFilter}` +
         `&select=id,trip_id,photo_url,sort_order` +
         `&order=trip_date.desc,sort_order.asc,created_at.asc&limit=600`
       ),
-      getLiveBlock(operator, showMap),
+      before ? Promise.resolve(null) : getLiveBlock(operator, showMap),
     ]);
+
+    // The row cap can cut mid-trip on the oldest day it reached. Complete
+    // that day so every trip in the response carries all its sightings, and
+    // page from strictly before it next time.
+    let sightings = sightingsRaw || [];
+    let hasMore = false;
+    let nextBefore = null;
+    if (sightings.length >= FEED_LIMIT) {
+      const boundary = sightings[sightings.length - 1].trip_date;
+      const boundaryRows = await pgGet(
+        `sightings?operator_id=eq.${operatorId}&trip_date=eq.${boundary}` +
+        `&select=trip_id,trip_part,trip_date,sighting_time,species,count,lat,lng,depth_meters,created_at` +
+        `&order=created_at.desc&limit=400`
+      );
+      sightings = sightings.filter(r => r.trip_date !== boundary).concat(boundaryRows || []);
+      hasMore = true;
+      nextBefore = boundary;
+    }
 
     // Enforce the GPS opt-out server-side: when the operator hides their map,
     // never send coordinates to the browser at all.
@@ -239,7 +264,7 @@ module.exports = async function handler(req, res) {
     // exact trip_ids that came back in `sightings` — never returns tracks for
     // trips that aren't already in this feed.
     let tracks = {};
-    if (showMap) {
+    if (showMap && !before) {
       const tripIds = [...new Set(sightingRows.map(s => s.trip_id).filter(Boolean))];
       if (tripIds.length) {
         const idList = tripIds.map(id => `"${id}"`).join(',');
@@ -296,6 +321,8 @@ module.exports = async function handler(req, res) {
       trip_meta: tripMeta,
       live: live || null,
       show_map_on_widget: showMap,
+      has_more: hasMore,
+      next_before: nextBefore,
     });
   } catch (err) {
     console.error('widget-data error:', err.message);
