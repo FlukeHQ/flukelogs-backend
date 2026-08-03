@@ -2292,6 +2292,7 @@
     startGPS();
     startDurationTimer();
     startLiveBroadcast();
+    flActivity.start();
     saveTrip();
     showScreen('screenLog');
   }
@@ -2343,6 +2344,44 @@
     return `${dm(a, 'N', 'S')}  ${dm(b, 'E', 'W')}`;
   }
 
+  // Lock-screen Live Activity bridge (iOS app only). Every call no-ops on
+  // the web, on old binaries without the plugin, and below iOS 16.2 — the
+  // plugin itself guards the OS side. Position updates are throttled here:
+  // GPS fixes land every couple of seconds but the card only needs a fresh
+  // line every ~30s, and the timers on it tick by themselves.
+  const flActivity = {
+    _plugin() {
+      try {
+        return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LiveActivity) || null;
+      } catch (e) { return null; }
+    },
+    _lastUpdate: 0,
+    start() {
+      const pl = this._plugin();
+      if (!pl || !trip.startTime) return;
+      this._lastUpdate = 0;
+      pl.startTrip({
+        startedAt: new Date(trip.startTime).getTime(),
+        boatName: trip.boatName || 'On the water',
+      }).catch(() => {});
+    },
+    position(lat, lng) {
+      const pl = this._plugin();
+      if (!pl) return;
+      const now = Date.now();
+      if (now - this._lastUpdate < 30000) return;
+      this._lastUpdate = now;
+      pl.updateTrip({
+        positionText: fmtLatLng(lat, lng),
+        distanceNm: trip.distanceNM || 0,
+      }).catch(() => {});
+    },
+    end() {
+      const pl = this._plugin();
+      if (pl) pl.endTrip().catch(() => {});
+    },
+  };
+
   function haversineNM(lat1, lng1, lat2, lng2) {
     const R = 3440.065;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -2378,6 +2417,7 @@
       accuracy: (accuracy != null && Number.isFinite(+accuracy)) ? +accuracy : null,
     });
     if (trip.liveId) livePendingPoints.push({ lat: newLat, lng: newLng, t: new Date().toISOString() });
+    flActivity.position(newLat, newLng);
     document.getElementById('statGPS').textContent = fmtLatLng(newLat, newLng);
     document.getElementById('statDistance').textContent = trip.distanceNM.toFixed(2) + ' NM';
     saveTrip();
@@ -2694,6 +2734,7 @@
     stopGPS();
     stopDurationTimer();
     liveEnd();
+    flActivity.end();
     document.getElementById('revDate').textContent =
       trip.startTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const ms = trip.endTime - trip.startTime;
@@ -3228,6 +3269,7 @@
   // Both buttons on the review screen land here. Neither asks: the callers
   // do, so each one can word its own question and nobody sees two dialogs.
   function resetTripState() {
+    flActivity.end();
     clearSavedTrip();
     trip = newTripState();
     guestGroups = [];
@@ -3333,6 +3375,10 @@
         // joins the broadcast on restore instead of staying dark all day.
         if (!trip.liveId) { trip.liveId = mintLiveId(); saveTrip(); }
         startLiveBroadcast(); // resume (or begin) the broadcast after a reload
+        // Recreate the lock screen card after a webview reload; startTrip on
+        // the plugin ends any survivor first, and the original start time
+        // keeps the trip clock honest.
+        flActivity.start();
         renderSightingList();
         showScreen('screenLog');
         toast('Trip restored', 'success');
