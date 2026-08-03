@@ -664,6 +664,37 @@ async function saveLogbookTrip(tripData, operatorId) {
   }
 }
 
+// A logged trip should never lose its route to client-side state loss. The
+// app broadcasts every GPS point to live_trips during the trip under
+// tripData.liveId, so when a log arrives with an EMPTY track (it happened:
+// a webview restore handed the log an empty array while the live row held
+// the full 434-point route), the server rebuilds the track from its own
+// live copy. Operator-scoped, so a crafted liveId can never read another
+// tenant's route. Returns [] when there is nothing to backfill from.
+async function backfillTrackFromLive(liveId, operatorId) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SECRET_KEY;
+  if (!url || !key) return [];
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(liveId || ''))) return [];
+  try {
+    const res = await fetch(
+      `${url}/rest/v1/live_trips?trip_id=eq.${liveId}&operator_id=eq.${operatorId}&select=track`,
+      { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } },
+    );
+    if (!res.ok) return [];
+    const rows = await res.json();
+    const pts = rows[0] && Array.isArray(rows[0].track) ? rows[0].track : [];
+    const track = pts
+      .filter(pt => Number.isFinite(+pt.lat) && Number.isFinite(+pt.lng) && pt.t)
+      .map(pt => ({ lat: +pt.lat, lng: +pt.lng, recorded_at: pt.t }));
+    if (track.length) console.log(`Track backfilled from live broadcast ${liveId}: ${track.length} points`);
+    return track;
+  } catch (e) {
+    console.error('backfillTrackFromLive error:', e.message);
+    return [];
+  }
+}
+
 async function saveTrackToSupabase(track, operatorId, tripId) {
   if (!Array.isArray(track) || track.length === 0 || !operatorId || !tripId) return;
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -914,6 +945,13 @@ module.exports = async function handler(req, res) {
   // email address. The full-send path below stays intact for old cached
   // clients until they pick up the new build.
   const isLogOnly = req.body.mode === 'log-only';
+
+  // The route to persist: the client's copy when it has one, else the
+  // server's own live-broadcast copy (see backfillTrackFromLive).
+  let tripTrack = Array.isArray(tripData.track) ? tripData.track : [];
+  if (tripTrack.length === 0 && tripData.liveId) {
+    tripTrack = await backfillTrackFromLive(tripData.liveId, operatorId);
+  }
   if (!tripData || (!isLogOnly && !guestEmails && !Array.isArray(req.body.guests))) {
     return res.status(400).json({ error: 'Missing tripData or guests' });
   }
@@ -977,7 +1015,7 @@ module.exports = async function handler(req, res) {
     if (isLogOnly) {
       await saveToSupabase(tripData, operatorId);
       await saveLogbookTrip(tripData, operatorId);
-      saveTrackToSupabase(tripData.track, operatorId, tripData.tripId)
+      saveTrackToSupabase(tripTrack, operatorId, tripData.tripId)
         .catch(e => console.error('saveTrackToSupabase background error:', e.message));
       const speciesCount = new Set((tripData.sightings || []).map(s => s.species)).size;
       const animalCount = (tripData.sightings || []).reduce((sum, s) => sum + (Number(s.count) || 0), 0);
@@ -1013,7 +1051,7 @@ module.exports = async function handler(req, res) {
       await saveToSupabase(tripData, operatorId);
       // GPS breadcrumb for the public widget's real boat-path render. Fire
       // and forget — a track failure shouldn't take down the report send.
-      saveTrackToSupabase(tripData.track, operatorId, tripData.tripId)
+      saveTrackToSupabase(tripTrack, operatorId, tripData.tripId)
         .catch(e => console.error('saveTrackToSupabase background error:', e.message));
     }
 
