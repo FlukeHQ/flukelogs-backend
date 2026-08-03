@@ -3229,6 +3229,12 @@
   // do, so each one can word its own question and nobody sees two dialogs.
   function resetTripState() {
     clearSavedTrip();
+    // Re-render the roster pickers so the next trip gets fresh defaults.
+    // Without this the departure picker silently keeps the PREVIOUS trip's
+    // time: a captain logging the 9:00 then starting the 12:30 files the
+    // afternoon trip as a second 9:00 (it happened, Princess, Aug 2), which
+    // also poisons the send-form's boat+date+departure match.
+    try { renderRosterPickers(); } catch (e) { /* roster not loaded yet */ }
     trip = newTripState();
     guestGroups = [];
     _addGuestPhoto = null;
