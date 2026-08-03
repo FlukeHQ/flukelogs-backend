@@ -3104,7 +3104,7 @@
     // operator this trip belongs to. If the session has expired between
     // login and trip end (rare — sessions auto-refresh), bail to login.
     const { data: { session } } = await sb.auth.getSession();
-    if (!session) { handleLogout(); throw new Error('Session expired — sign in again'); }
+    if (!session) { sessionExpired(); throw new Error('Session expired — sign in again'); }
 
     // Compute the trip's local calendar date here on the device — the
     // server otherwise derives it from startTime.toISOString() in UTC,
@@ -3149,7 +3149,7 @@
     btn.innerHTML = '<span class="spinner"></span>Logging...';
     try {
       const { data: { session } } = await sb.auth.getSession();
-      if (!session) { handleLogout(); throw new Error('Session expired — sign in again'); }
+      if (!session) { sessionExpired(); throw new Error('Session expired — sign in again'); }
       // Compute the trip's local calendar date on the device — the server
       // otherwise derives it from startTime in UTC, which rolls a morning
       // trip in a negative-UTC offset onto the wrong day.
@@ -3413,7 +3413,27 @@
     }
   }
 
+  // Session died under the captain (expired token, failed refresh). This is
+  // NOT a logout: the saved trip stays exactly where it is, because the
+  // number one moment a session turns out to be expired is the tap that
+  // tries to LOG the trip, and that tap must never destroy it. Signing back
+  // in lands in the boot flow's restoreTrip() and the captain continues.
+  // One real trip (Princess, Aug 2 12:30) died this way before this existed.
+  function sessionExpired() {
+    operatorConfig = null;
+    setRibbonForLoggedOut();
+    showScreen('screenLogin');
+    toast('Session expired. Sign in again to continue — your trip is saved.', 'error');
+  }
+
   async function handleLogout() {
+    // A deliberate sign-out with an unlogged trip aboard deserves the same
+    // warning as the other destructive buttons; the wipe below is by design
+    // (a shared phone switching operators must not leak a trip across).
+    if (typeof tripHasUnloggedWork === 'function' && tripHasUnloggedWork() &&
+        !confirm('This trip has not been logged yet.\n\nSigning out discards its route and sightings for good.\n\nCancel, then tap Log Trip, to keep it.')) {
+      return;
+    }
     try { await sb.auth.signOut(); } catch (e) { /* ignore */ }
     // Drop the operator's branding with their session — the login screen
     // must always be product-branded (Flukelogs), never the previous tenant.
@@ -3717,7 +3737,7 @@
   async function openSettings(focus) {
     showScreen('screenSettings');
     const { data: { session } } = await sb.auth.getSession();
-    if (!session) return handleLogout();
+    if (!session) return sessionExpired();
     try {
       const res = await fetch('/api/operator-settings', {
         headers: { 'Authorization': `Bearer ${session.access_token}` },
@@ -3965,7 +3985,7 @@
     if (file.size > 2 * 1024 * 1024) return toast('Logo too large (max 2MB)', 'error');
 
     const { data: { session } } = await sb.auth.getSession();
-    if (!session) return handleLogout();
+    if (!session) return sessionExpired();
 
     const dataUrl = await new Promise((resolve, reject) => {
       const r = new FileReader();
@@ -4043,7 +4063,7 @@
     btn.innerHTML = '<span class="spinner"></span>Saving…';
 
     const { data: { session } } = await sb.auth.getSession();
-    if (!session) { btn.disabled = false; btn.textContent = originalLabel; return handleLogout(); }
+    if (!session) { btn.disabled = false; btn.textContent = originalLabel; return sessionExpired(); }
 
     const body = {
       logo_url:                document.getElementById('settingsLogoUrl').value.trim()      || null,
@@ -4099,7 +4119,7 @@
 
   async function adminAuthHeader() {
     const { data: { session } } = await sb.auth.getSession();
-    if (!session) { handleLogout(); throw new Error('No session'); }
+    if (!session) { sessionExpired(); throw new Error('No session'); }
     return { 'Authorization': `Bearer ${session.access_token}` };
   }
 
@@ -5055,7 +5075,7 @@
     list.innerHTML = '<div class="empty">Loading…</div>';
     try {
       const { data: { session } } = await sb.auth.getSession();
-      if (!session) return handleLogout();
+      if (!session) return sessionExpired();
       const res = await fetch('/api/operator/trips', {
         headers: { 'Authorization': `Bearer ${session.access_token}` },
       });
@@ -5111,7 +5131,7 @@
     btn.innerHTML = '<span class="spinner"></span>Deleting…';
     try {
       const { data: { session } } = await sb.auth.getSession();
-      if (!session) return handleLogout();
+      if (!session) return sessionExpired();
       const res = await fetch(`/api/operator/trips?tripId=${encodeURIComponent(currentAudioTripId)}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${session.access_token}` },
@@ -5154,7 +5174,7 @@
     // Look up existing audio for this date
     try {
       const { data: { session } } = await sb.auth.getSession();
-      if (!session) return handleLogout();
+      if (!session) return sessionExpired();
       const res = await fetch('/api/operator/trips', {
         headers: { 'Authorization': `Bearer ${session.access_token}` },
       });
@@ -5219,7 +5239,7 @@
     grid.innerHTML = '<p style="font-size:13px;color:var(--text-dim);margin:0;">Loading…</p>';
     try {
       const { data: { session } } = await sb.auth.getSession();
-      if (!session) return handleLogout();
+      if (!session) return sessionExpired();
       const res = await fetch('/api/trip-photos?trip_id=' + encodeURIComponent(tripId), {
         headers: { 'Authorization': `Bearer ${session.access_token}` },
       });
@@ -5258,7 +5278,7 @@
     const status = document.getElementById('tripGalleryStatus');
     const tripId = currentAudioTripId, tripDate = currentAudioDate;
     const { data: { session } } = await sb.auth.getSession();
-    if (!session) return handleLogout();
+    if (!session) return sessionExpired();
     let done = 0;
     for (let i = 0; i < files.length; i++) {
       status.textContent = 'Uploading ' + (i + 1) + ' of ' + files.length + '…';
@@ -5286,7 +5306,7 @@
     if (!confirm('Remove this photo?')) return;
     try {
       const { data: { session } } = await sb.auth.getSession();
-      if (!session) return handleLogout();
+      if (!session) return sessionExpired();
       const res = await fetch('/api/trip-photos?id=' + encodeURIComponent(id), {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${session.access_token}` },
@@ -5363,7 +5383,7 @@
 
     try {
       const { data: { session } } = await sb.auth.getSession();
-      if (!session) { handleLogout(); throw new Error('No session'); }
+      if (!session) { sessionExpired(); throw new Error('No session'); }
 
       const dataUrl = await new Promise((resolve, reject) => {
         const r = new FileReader();
@@ -5407,7 +5427,7 @@
     if (!confirm(`Remove audio for ${fmtTripDate(currentAudioDate)}${currentAudioPart ? ' · ' + currentAudioPart : ''}?\n\nThe player will stop showing on the public widget. The audio file stays in storage and is unrecoverable from inside the app — you can re-record any time.`)) return;
     try {
       const { data: { session } } = await sb.auth.getSession();
-      if (!session) return handleLogout();
+      if (!session) return sessionExpired();
       const res = await fetch('/api/trip-audio?trip_id=' + encodeURIComponent(currentAudioTripId), {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${session.access_token}` },
