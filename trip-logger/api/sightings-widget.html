@@ -1900,7 +1900,12 @@ function renderLegend(data) {
       <span class="legend-name">All species</span>
       <span class="legend-count">${totalTrips} trip${totalTrips === 1 ? '' : 's'}</span>
     </button>`);
-  species.forEach(spec => {
+  // Birds sit out of the odds panel. This answers "what marine wildlife will
+  // I see on a whale watch", and a seabird logged in some seasons and not
+  // others reads as rare when it is really just unevenly recorded. Their
+  // records are untouched: still on the map, in the trip cards, and behind
+  // the Birds filter.
+  species.filter(spec => spec.kind !== 'bird').forEach(spec => {
     // The bar is the argument: a species seen on every trip fills its row.
     rows.push(`
       <button class="legend-row" type="button" data-species="${spec.name.replace(/"/g, '&quot;')}">
