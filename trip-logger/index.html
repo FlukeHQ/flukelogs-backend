@@ -3308,7 +3308,17 @@
 
   function saveTrip() {
     if (!trip.startTime) return;
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(trip)); } catch(e) {}
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(trip));
+    } catch (e) {
+      // Quota blown, almost always by photoData (a base64 photo dwarfs
+      // everything else combined). Losing the photo from the snapshot is
+      // recoverable; silently losing every save from here on, so a webview
+      // reload restores a stale trip with no route, is not.
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...trip, photoData: null }));
+      } catch (e2) { /* storage truly unavailable; the live broadcast still has the route */ }
+    }
   }
 
   function restoreTrip() {
