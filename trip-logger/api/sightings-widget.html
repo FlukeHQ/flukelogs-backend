@@ -660,7 +660,7 @@
   <!-- Filter + Map: D · legend column on desktop, C · segmented + rail on mobile -->
   <div class="fm-grid">
     <aside class="legend-col" id="legend-col">
-      <div class="legend-head">Species &mdash; count</div>
+      <div class="legend-head" id="legend-head">Species &mdash; count</div>
       <div class="legend-list" id="legend-list"></div>
       <div class="legend-status" id="legend-status"></div>
     </aside>
@@ -1765,6 +1765,26 @@ function renderLegend(data) {
   const species = aggregateBySpecies(data);
   const total = species.reduce((s, x) => s + x.count, 0);
 
+  // These counts only ever cover what is loaded, which on first paint is the
+  // newest ~100 sightings (roughly a month at a busy operator's pace). Saying
+  // "Species - count" over a partial season reads as an all time total and
+  // undercounts the year; name the window instead, and let it say "all
+  // recorded" once Show earlier trips has pulled the season in.
+  const head = document.getElementById('legend-head');
+  if (head) {
+    const dates = data.map(s => (s.trip_date || '').slice(0, 10)).filter(Boolean).sort();
+    const since = dates.length
+      ? fmtDateShort(dates[0]).replace(`, ${new Date().getFullYear()}`, '')
+      : '';
+    if (!dates.length) {
+      head.innerHTML = 'Species &mdash; count';
+    } else if (feedNextBefore) {
+      head.textContent = `Species — count · since ${since}`;
+    } else {
+      head.textContent = `Species — count · all recorded, since ${since}`;
+    }
+  }
+
   const rows = [];
   rows.push(`
     <button class="legend-row" type="button" data-species="all">
@@ -2506,6 +2526,12 @@ function applyInitialTripFromUrl() {
     [allData, tripAudioByTrip, tripTrackById, tripPhotosByTrip, tripMetaByTrip] = await Promise.all([
       fetchSightings(), fetchTripAudio(), fetchTripTracks(), fetchTripPhotos(), fetchTripMeta()
     ]);
+    // Arm paging before the first paint: renderLegend words its scope line
+    // differently depending on whether more season is still out there, and
+    // loadWidgetData is memoized so this costs nothing.
+    const first = await loadWidgetData();
+    feedNextBefore = first && first.has_more ? first.next_before : null;
+    setFeedMoreVisible(!!feedNextBefore);
     renderNowBanner(allData);
     renderLegend(allData);
     renderSegmentedRail(allData);
@@ -2513,9 +2539,6 @@ function applyInitialTripFromUrl() {
     renderFeed(allData);
     // Live layer: paint from the feed we already have, then keep it fresh.
     const wd = await loadWidgetData();
-    // Arm backwards paging when the first load says the season goes deeper.
-    feedNextBefore = wd && wd.has_more ? wd.next_before : null;
-    setFeedMoreVisible(!!feedNextBefore);
     const liveNow = !!(wd && wd.live && wd.live.active);
     renderLive(wd && wd.live);
     setInterval(pollLive, LIVE_POLL_MS);
