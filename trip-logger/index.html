@@ -653,13 +653,57 @@
       border-radius: 14px;
       padding: 16px 18px;
       margin-bottom: 20px;
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 12px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
       box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 14px 28px rgba(0,0,0,.35);
       position: relative;
       overflow: hidden;
     }
+    /* Stats keep their own three-column grid; the code sits beside them. */
+    .status-main { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+    /* The code, shown small but real. White plate because a QR on a dark
+       surface scans badly, and this size already works close up. */
+    .qr-tile {
+      flex: 0 0 auto;
+      display: flex; flex-direction: column; align-items: center; gap: 7px;
+      background: none; border: 0; padding: 0;
+      color: var(--text-faint);
+      font: inherit; font-size: 10px; font-weight: 600;
+      letter-spacing: .12em; text-transform: uppercase;
+      cursor: pointer; -webkit-tap-highlight-color: transparent;
+    }
+    .qr-tile img {
+      width: 96px; height: 96px; display: block;
+      background: #fff; border-radius: 8px; padding: 6px;
+      image-rendering: pixelated;
+    }
+    .qr-tile:active img { opacity: .82; }
+    @media (max-width: 380px) { .qr-tile img { width: 78px; height: 78px; } }
+
+    /* Full screen code. White, because a dark surface behind a QR scans badly
+       and the deck is bright. Tap anywhere to dismiss. */
+    .qr-full {
+      position: fixed; inset: 0; z-index: 2000;
+      background: #fff; color: #0b0f12;
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      gap: 18px; padding: 24px; text-align: center;
+    }
+    .qr-full.on { display: flex; }
+    .qr-full img {
+      /* Sized to the phone in hand: the smaller of the two viewport axes, so
+         it fills a portrait screen without ever spilling off it, and stays a
+         sensible square if the page is opened on a desktop. */
+      width: min(82vw, 82vh); max-width: 520px; height: auto; display: block;
+      image-rendering: pixelated;   /* keep the modules crisp when scaled up */
+    }
+    .qr-full .qr-boat {
+      font-size: 15px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+    }
+    .qr-full .qr-copy { font-size: 15px; color: #55606a; max-width: 30ch; line-height: 1.5; }
+    .qr-full .qr-dismiss { font-size: 12px; color: #8b939b; letter-spacing: .1em; text-transform: uppercase; }
+
     .status-bar::before {
       content: '';
       position: absolute; top: 0; left: 0; bottom: 0;
@@ -1341,8 +1385,12 @@
       </div>
     </details>
 
-    <div class="section">
-      <div class="section-label">Public Widget</div>
+    <details class="section section-collapsible">
+      <summary>
+        <div class="section-label">Public Widget</div>
+        <span class="section-status" id="settingsWidgetStatus">&mdash;</span>
+      </summary>
+      <div class="section-body">
       <label class="toggle-row" for="settingsShowMapOnWidget">
         <div class="toggle-row-text">
           <div class="toggle-row-title">Show map of sightings</div>
@@ -1394,7 +1442,8 @@
           <a id="settingsEmbedPreview" class="btn btn-outline" style="margin:0; flex:1; text-align:center;" target="_blank" rel="noopener">Preview &rarr;</a>
         </div>
       </div>
-    </div>
+      </div>
+    </details>
 
     <button class="btn btn-primary" id="settingsSaveBtn" onclick="saveSettings()">Save Settings</button>
     <button class="btn btn-outline" type="button" onclick="showScreen('screenStart')">Back</button>
@@ -1638,10 +1687,21 @@
   <!-- Logging -->
   <div class="screen" id="screenLog">
     <div class="status-bar">
+      <div class="status-main">
       <div class="status-item">Status: <span>Active</span></div>
       <div class="status-item">Duration: <span id="statDuration">0m</span></div>
       <div class="status-item">Distance: <span id="statDistance">0.00 NM</span></div>
       <div class="status-item" style="grid-column:span 3;">GPS: <span id="statGPS">Acquiring...</span></div>
+      </div>
+      <!-- The code itself, not an icon: at this size a guest standing next to
+           the crew can already scan it, and enlarging is only for reaching
+           someone across the deck. Hidden until a code is cached, so it never
+           shows as a dead control. -->
+      <button type="button" id="qrTile" class="qr-tile" onclick="openCaptureQr()" hidden
+              aria-label="Enlarge the guest sign-up code">
+        <img id="qrTileImg" alt="Guest sign-up code">
+        <span>Tap to enlarge</span>
+      </button>
     </div>
 
     <div class="section">
@@ -1696,14 +1756,31 @@
       <button class="btn btn-primary" onclick="logSighting()">Log Sighting</button>
     </div>
 
-    <div class="section">
-      <div class="section-label">Sightings (<span id="sightingCount">0</span>)</div>
-      <div class="sighting-list" id="sightingList">
-        <div class="empty">No sightings logged yet</div>
+    <!-- Collapsed by default: empty it is dead space, and full it pushes End
+         Trip off the screen. The count in the summary is the confirmation
+         that a log landed, so the list itself is only opened to check or
+         edit. -->
+    <details class="section section-collapsible">
+      <summary>
+        <div class="section-label">Sightings (<span id="sightingCount">0</span>)</div>
+        <span class="section-status" id="sightingSummary">&mdash;</span>
+      </summary>
+      <div class="section-body">
+        <div class="sighting-list" id="sightingList">
+          <div class="empty">No sightings logged yet</div>
+        </div>
       </div>
-    </div>
+    </details>
 
     <button class="btn btn-outline" onclick="confirmEndTrip()">End Trip</button>
+  </div>
+
+  <!-- Guest sign-up code, full screen. Tap anywhere to put it away. -->
+  <div class="qr-full" id="qrFull" onclick="closeCaptureQr()" role="dialog" aria-label="Guest sign-up code">
+    <div class="qr-boat" id="qrFullBoat"></div>
+    <img id="qrFullImg" alt="Scan to get your trip photos">
+    <div class="qr-copy" id="qrFullCopy">Scan for your photos from today's trip</div>
+    <div class="qr-dismiss">Tap anywhere to close</div>
   </div>
 
   <!-- Review & Send -->
@@ -2302,6 +2379,8 @@
     startLiveBroadcast();
     saveTrip();
     showScreen('screenLog');
+    syncQrTile();
+    refreshCaptureQr();
   }
 
   // The sighting-time field tracks the clock on its own while a trip is
@@ -2596,6 +2675,15 @@
     const list = document.getElementById('sightingList');
     const count = document.getElementById('sightingCount');
     count.textContent = trip.sightings.length;
+    // Collapsed, the card still has to say what is in it: species names beat a
+    // bare number when the captain is checking they logged the humpbacks.
+    const summary = document.getElementById('sightingSummary');
+    if (summary) {
+      const names = [...new Set(trip.sightings.map(x => x.species).filter(Boolean))];
+      summary.textContent = names.length === 0 ? 'None yet'
+        : names.length <= 2 ? names.join(' · ')
+        : `${names[0]} · ${names[1]} · +${names.length - 2}`;
+    }
     if (trip.sightings.length === 0) {
       list.innerHTML = '<div class="empty">No sightings logged yet</div>';
       editingSightingIndex = -1;
@@ -3283,6 +3371,71 @@
     resetTripState();
   }
 
+  // ── Guest sign-up code ────────────────────────────────────────────
+  // Crews show this on deck in the last half hour, miles offshore, so the
+  // codes are fetched when there IS signal (login, and again at trip start)
+  // and cached as data URLs. Display never touches the network.
+  const QR_KEY = 'flukelogs_capture_qr';
+  let captureQr = null;
+
+  function loadCachedQr() {
+    try {
+      const raw = localStorage.getItem(QR_KEY);
+      if (raw) captureQr = JSON.parse(raw);
+    } catch (e) { /* corrupt cache is the same as no cache */ }
+    syncQrTile();
+  }
+
+  async function refreshCaptureQr() {
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) return;
+      const res = await fetch('/api/capture-qr', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) return;               // keep whatever is cached
+      const body = await res.json();
+      if (!body || (!body.operator && !(body.boats || []).length)) return;
+      captureQr = body;
+      try { localStorage.setItem(QR_KEY, JSON.stringify(body)); } catch (e) { /* quota */ }
+      syncQrTile();
+    } catch (e) { /* offline: the cache is the point */ }
+  }
+
+  // The code for the boat this trip is on, falling back to the operator-wide
+  // one. A single-boat operator only ever has the wide code.
+  function qrForCurrentTrip() {
+    if (!captureQr) return null;
+    const boats = captureQr.boats || [];
+    if (trip.boatId) {
+      const match = boats.find(b => b.boat_id === trip.boatId);
+      if (match) return { img: match.data_url, label: match.boat_name || '' };
+    }
+    if (captureQr.operator) return { img: captureQr.operator.data_url, label: '' };
+    return boats.length ? { img: boats[0].data_url, label: boats[0].boat_name || '' } : null;
+  }
+
+  function syncQrTile() {
+    const tile = document.getElementById('qrTile');
+    const img = document.getElementById('qrTileImg');
+    if (!tile) return;
+    const qr = qrForCurrentTrip();
+    tile.hidden = !qr;
+    if (qr && img) img.src = qr.img;
+  }
+
+  function openCaptureQr() {
+    const qr = qrForCurrentTrip();
+    if (!qr) return;
+    document.getElementById('qrFullImg').src = qr.img;
+    document.getElementById('qrFullBoat').textContent = qr.label;
+    document.getElementById('qrFull').classList.add('on');
+  }
+
+  function closeCaptureQr() {
+    document.getElementById('qrFull').classList.remove('on');
+  }
+
   function discardTrip() {
     const msg = tripHasUnloggedWork()
       ? UNLOGGED_WARNING.replace('THIS_ACTION', 'Discarding it')
@@ -3553,6 +3706,8 @@
     // Best-effort — if /api/me fails we proceed with hardcoded defaults so
     // the captain can still log a trip offline-ish.
     await loadMe(session.access_token);
+    loadCachedQr();
+    refreshCaptureQr();
 
     // Super-admins don't run trips — drop them straight into the Admin
     // portal where they can onboard a new operator or edit existing ones.
@@ -3872,6 +4027,19 @@
         : pdf ? 'PDF logo set'
         : eml ? 'Email logo set'
         : 'No logos set';
+    }
+    const wd = document.getElementById('settingsWidgetStatus');
+    if (wd) {
+      const bits = [];
+      bits.push(cfg.show_map_on_widget !== false ? 'Map on' : 'Map off');
+      if (cfg.live_widget_enabled) {
+        const d = Number(cfg.live_delay_minutes);
+        bits.push(`Live ${Number.isFinite(d) && d >= 1 ? Math.round(d) + ' min' : 'on'}`);
+      } else {
+        bits.push('Live off');
+      }
+      if (cfg.widget_hero_from_send !== false) bits.push('Auto photo');
+      wd.textContent = bits.join(' · ');
     }
     const sp = document.getElementById('settingsSpeciesStatus');
     if (sp) {
