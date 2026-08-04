@@ -2102,11 +2102,13 @@ function renderFeed(data) {
   document.getElementById('feed-count').textContent = `${trips.length} trip${trips.length !== 1 ? 's' : ''}`;
   if (!trips.length) { list.innerHTML = '<div class="state-msg">No sightings recorded yet.</div>'; return; }
 
-  // Days with more than one trip get the scheduled departure and boat name
-  // in the card title, so "9:00 AM · Princess" and "10:00 AM · Atlantis"
-  // read apart ("Morning" twice does not). The daypart stays as the
-  // fallback when a trip has no stamped departure, and single-trip days
-  // keep the exact title they always had.
+  // Every card title leads with its scheduled departure ("9:00 AM"), not the
+  // daypart ("Morning") — "9:00 AM" and "10:00 AM" tell two trips apart on a
+  // busy day, and a single trip reads more precisely too, for every operator.
+  // The daypart is only ever a fallback, for the rare trip with no stamped
+  // departure (pre-roster history, or a trip logged with no time picked).
+  // Boat name stays reserved for days with more than one trip: on a
+  // single-trip day it is the only boat, so naming it again is just noise.
   const tripsPerDate = {};
   trips.forEach(([, sightings]) => {
     const d = (sightings[0].trip_date || '').slice(0, 10);
@@ -2116,8 +2118,8 @@ function renderFeed(data) {
   list.innerHTML = trips.map(([tripKey, sightings]) => {
     const tripDate = (sightings[0].trip_date || '').slice(0, 10);
     const tripPart = sightings[0].trip_part || '';
-    const meta = tripsPerDate[tripDate] > 1 ? (tripMetaByTrip.get(tripKey) || {}) : {};
-    const boatName = meta.boat_name || '';
+    const meta = tripMetaByTrip.get(tripKey) || {};
+    const boatName = tripsPerDate[tripDate] > 1 ? (meta.boat_name || '') : '';
     const timeLabel = fmtDepartureTime(meta.trip_time) || tripPart;
     const totalAnimals = sightings.reduce((sum, s) => sum + (parseInt(s.count) || 1), 0);
     const tallied = tallyBySpecies(sightings);
