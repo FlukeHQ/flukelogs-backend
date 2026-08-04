@@ -48,6 +48,31 @@ async function getOperatorIdForUser(userId) {
   return null;
 }
 
+// Is the boat app part of what this operator bought? The Flukesend plan does
+// not include Flukelogs, but membership alone opens the app (see
+// getOperatorIdForUser), so without this check a Flukesend-only operator uses
+// a product they have not paid for. Missing column or a failed read returns
+// true: a broken entitlement lookup must never lock a working captain off the
+// water mid-trip. Migration 0049 backfilled every existing operator to true.
+async function isLogbookEnabled(operatorId) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SECRET_KEY;
+  if (!url || !key || !operatorId) return true;
+  try {
+    const res = await fetch(
+      `${url}/rest/v1/operators?id=eq.${operatorId}&select=logbook_enabled&limit=1`,
+      { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
+    );
+    if (!res.ok) return true;
+    const rows = await res.json();
+    if (!rows[0] || rows[0].logbook_enabled === undefined) return true;
+    return rows[0].logbook_enabled !== false;
+  } catch (e) {
+    console.error('isLogbookEnabled error:', e.message);
+    return true;
+  }
+}
+
 async function getUserProfile(userId) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY;
@@ -95,6 +120,17 @@ async function authenticate(req, res, opts = {}) {
 
   if (requireOperator && !operatorId) {
     res.status(403).json({ error: 'User is not linked to any operator' });
+    return null;
+  }
+
+  // Plan gate. Super admins are exempt so support can always get in, and the
+  // code is distinct from every other 403 so the app can show a plan message
+  // instead of a generic sign-in failure.
+  if (operatorId && !isSuperAdmin && !(await isLogbookEnabled(operatorId))) {
+    res.status(403).json({
+      error: 'Flukelogs is not included in this operator\'s plan.',
+      code: 'logbook_not_enabled',
+    });
     return null;
   }
 
