@@ -24,6 +24,7 @@ const OPERATOR_EDITABLE = [
   'tagline',
   'species_list',
   'show_map_on_widget',
+  'widget_hero_from_send',
   'widget_host_url',
   'live_widget_enabled',
   'live_delay_minutes',
@@ -50,6 +51,7 @@ function operatorSettingsView(operator) {
     tagline:                  operator.tagline || null,
     species_list:             operator.species_list || [],
     show_map_on_widget:       operator.show_map_on_widget !== false,
+    widget_hero_from_send:    operator.widget_hero_from_send !== false,
     widget_host_url:          operator.widget_host_url || null,
     live_widget_enabled:      operator.live_widget_enabled === true,
     live_delay_minutes:       Number.isFinite(+operator.live_delay_minutes)
