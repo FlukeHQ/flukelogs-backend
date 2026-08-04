@@ -1370,6 +1370,14 @@
         <input type="hidden" id="settingsLiveDelay">
       </div>
 
+      <label class="toggle-row" for="settingsWidgetHeroFromSend" style="margin-top:6px;">
+        <div class="toggle-row-text">
+          <div class="toggle-row-title">Use my send's top photo as the trip photo</div>
+          <div class="toggle-row-help">Whichever photo you put first in a Flukesend send becomes that trip's photo on your public sightings page, a few minutes after you send. Nothing extra to do. Turn this off to keep guest photos off your public page, or to choose trip photos by hand in Past Trips.</div>
+        </div>
+        <input type="checkbox" id="settingsWidgetHeroFromSend" class="toggle-switch">
+      </label>
+
       <div class="field" style="margin-top:18px;">
         <label>Widget Host URL <span style="color:var(--text-dim);font-weight:500;text-transform:none;letter-spacing:0;">(where you've embedded the widget on your site)</span></label>
         <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px;line-height:1.5;">When visitors tap a trip's Share button inside the widget, the shared link points here. Leave blank to share the bare widget URL on our domain instead.</p>
@@ -3820,6 +3828,7 @@
     showLogoPreview('settingsLogoUrlPreview',      cfg.logo_url);
     showLogoPreview('settingsLogoUrlEmailPreview', cfg.logo_url_email);
     document.getElementById('settingsShowMapOnWidget').checked = cfg.show_map_on_widget !== false;
+    document.getElementById('settingsWidgetHeroFromSend').checked = cfg.widget_hero_from_send !== false;
     document.getElementById('settingsLiveWidget').checked = cfg.live_widget_enabled === true;
     // Delay pills: highlight the saved choice. A legacy value that predates
     // the 5/10/15 picker (e.g. the old 0.5 default) selects nothing, and
@@ -4098,6 +4107,7 @@
       tagline:                 document.getElementById('settingsTagline').value.trim()      || null,
       species_list:            serializeSpeciesGroups(),
       show_map_on_widget:      document.getElementById('settingsShowMapOnWidget').checked,
+      widget_hero_from_send:   document.getElementById('settingsWidgetHeroFromSend').checked,
       widget_host_url:         document.getElementById('settingsWidgetHostUrl').value.trim() || null,
       live_widget_enabled:     document.getElementById('settingsLiveWidget').checked,
     };
