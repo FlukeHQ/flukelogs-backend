@@ -35,7 +35,7 @@ function pgHeaders(extra) {
 
 async function getRow(tripId) {
   const url = process.env.SUPABASE_URL;
-  const res = await fetch(`${url}/rest/v1/live_trips?trip_id=eq.${tripId}&select=trip_id,operator_id,track,sightings`, {
+  const res = await fetch(`${url}/rest/v1/live_trips?trip_id=eq.${tripId}&select=trip_id,operator_id,track,sightings,ended_at,started_at,boat_id,boat_name`, {
     headers: pgHeaders(),
   });
   if (!res.ok) throw new Error(`live_trips read ${res.status}`);
@@ -164,6 +164,47 @@ module.exports = async function handler(req, res) {
       return res.status(403).json({ error: 'Not your trip' });
     }
     const nowISO = new Date().toISOString();
+
+    /*
+      A phone whose broadcast has been superseded must not resurrect it.
+
+      Closing an orphan is not enough on its own: the abandoned phone keeps
+      beating, and a heartbeat writes ended_at back to null, so the stale boat
+      reappears on the public map about a minute later. That happened for real.
+      An owner started a trip while demoing in the office, left the phone in his
+      pocket, and when the crew started the actual trip on the same boat the map
+      showed the vessel in two places, one of them a building.
+
+      So a heartbeat is refused when this broadcast is closed AND a newer one
+      exists for the same boat: that newer one is the trip that is really
+      running. The phone is told everything is fine rather than given an error,
+      since there is nobody to act on it and a retry loop helps no one.
+
+      Scoped to superseded broadcasts only. A closed broadcast with nothing
+      after it still reopens, so a crew who ends a trip and carries on logging
+      is unaffected.
+    */
+    if (action === 'heartbeat' && existing && existing.ended_at) {
+      const url = process.env.SUPABASE_URL;
+      const boatFilter = existing.boat_id
+        ? `boat_id=eq.${existing.boat_id}`
+        : (existing.boat_name ? `boat_name=eq.${encodeURIComponent(existing.boat_name)}` : null);
+      if (boatFilter) {
+        const q =
+          `live_trips?operator_id=eq.${operatorId}&trip_id=neq.${tripId}` +
+          `&started_at=gt.${encodeURIComponent(existing.started_at)}&${boatFilter}&select=trip_id&limit=1`;
+        // Named so it cannot shadow the handler's own res, which is the
+        // response we still have to send.
+        const lookup = await fetch(`${url}/rest/v1/${q}`, { headers: pgHeaders() });
+        if (lookup.ok) {
+          const newer = await lookup.json();
+          if (newer.length) {
+            console.log(`live-trip: ignoring heartbeat for superseded broadcast ${tripId}`);
+            return res.status(200).json({ ok: true, superseded: true });
+          }
+        }
+      }
+    }
 
     if (action === 'heartbeat') {
       // A heartbeat with no existing row is the start of a broadcast, and the
