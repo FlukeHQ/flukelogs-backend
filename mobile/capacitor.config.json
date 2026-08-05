@@ -5,10 +5,16 @@
   "server": {
     "url": "https://trip-logger-backend.vercel.app",
     "cleartext": false,
-    "allowNavigation": ["trip-logger-backend.vercel.app"]
+    "allowNavigation": [
+      "trip-logger-backend.vercel.app"
+    ]
   },
   "ios": {
     "contentInset": "automatic",
     "limitsNavigationsToAppBoundDomains": false
-  }
+  },
+  "packageClassList": [
+    "BackgroundGeolocation",
+    "LiveActivityPlugin"
+  ]
 }
