@@ -725,7 +725,10 @@
       <div class="now-species" id="now-species"></div>
       <div class="now-meta" id="now-meta"></div>
     </div>
-    <a class="now-cta" href="https://enoceantours.com/tours" target="_blank">Book Now</a>
+    <!-- href comes from the operator's booking link (Flukesend Branding >
+         Website and social). Hidden until that link resolves, so a visitor
+         is never offered a button to another operator's booking page. -->
+    <a class="now-cta" id="now-cta" target="_blank" rel="noopener" style="display:none;">Book Now</a>
   </div>
 
   <!-- Filter + Map: D · legend column on desktop, C · segmented + rail on mobile -->
@@ -797,7 +800,20 @@ const FEED_LIMIT = 100;
 // every operator's sightings into the embed).
 const OP = (typeof window !== 'undefined' && window.__OP_CONFIG) || {};
 const OPERATOR_ID = OP.id || null;
-const BOOK_URL = 'https://enoceantours.com/tours';
+// Book Now on the recap/live banner. The operator owns this destination in
+// Flukesend (Branding > Website and social > Booking), injected here with the
+// rest of __OP_CONFIG. It was hardcoded to Enocean's tours page, so every
+// other operator's widget sold Enocean's trips. No link on file = no button,
+// which is what the Flukesend field promises ("leave blank to hide it").
+const BOOK_URL = (OP && OP.booking_url) || '';
+(function applyBookingCta() {
+  const cta = document.getElementById('now-cta');
+  if (!cta) return;
+  if (BOOK_URL) {
+    cta.href = BOOK_URL;
+    cta.style.display = '';
+  }
+})();
 
 const WHALE_SPECIES = ['Humpback Whale','Blue Whale','Gray Whale','Fin Whale','Minke Whale','Orca','Transient Orcas','Offshore Orcas','Resident Orcas','Sperm Whale'];
 const DOLPHIN_SPECIES = ['Common Dolphin','Pacific White-sided Dolphin',"Risso's Dolphin","Risso's dolphins",'Bottlenose Dolphin','Coastal Bottlenose Dolphin','Northern Right Whale Dolphin',"Dall's Porpoise",'Harbor Porpoise'];

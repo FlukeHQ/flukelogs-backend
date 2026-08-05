@@ -29,7 +29,7 @@ async function loadOperatorRow(slug) {
   try {
     const safeSlug = encodeURIComponent(slug);
     const res = await fetch(
-      `${url}/rest/v1/operators?slug=eq.${safeSlug}&select=id,slug,name,show_map_on_widget,logo_url,logo_url_email,widget_host_url,widget_standalone_url,home_port_lat,home_port_lng&limit=1`,
+      `${url}/rest/v1/operators?slug=eq.${safeSlug}&select=id,slug,name,show_map_on_widget,logo_url,logo_url_email,widget_host_url,widget_standalone_url,booking_url,home_port_lat,home_port_lng&limit=1`,
       { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
     );
     if (!res.ok) return null;
@@ -226,9 +226,16 @@ module.exports = async function handler(req, res) {
           // used by the full-screen breakout, which can't go full screen
           // from inside an embed. Null = fall back to the current URL.
           widget_standalone_url: operator.widget_standalone_url || null,
+          // Where the banner's Book Now button sends a visitor. The operator
+          // sets it in Flukesend under Branding > Website and social, so the
+          // button follows their booking page (a FareHarbor item link, their
+          // own tours page) without a code change here. Null = no booking
+          // link on file, and the button hides rather than pointing at
+          // somebody else's site.
+          booking_url: operator.booking_url || null,
           home_port: homePort,
         }
-      : { id: null, slug, show_map_on_widget: true, widget_host_url: null, widget_standalone_url: null, home_port: null };
+      : { id: null, slug, show_map_on_widget: true, widget_host_url: null, widget_standalone_url: null, booking_url: null, home_port: null };
 
     // Per-trip enrichment only when both the operator AND the trip resolve
     // — otherwise fall through to the generic operator-level OG.

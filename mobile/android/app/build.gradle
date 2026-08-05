@@ -1,5 +1,25 @@
 apply plugin: 'com.android.application'
 
+/*
+  Release signing, read from a file that is never committed.
+
+  The keystore is the app's identity. Android will refuse an update signed
+  with a different key, so losing it means every naturalist has to uninstall
+  and reinstall to get a new build. It lives outside the repo and is backed up
+  in a password manager.
+
+  keystore.properties is gitignored and holds the paths and passwords. When it
+  is absent, release signing is simply not configured: the build still works
+  for debug, and `assembleRelease` fails loudly rather than quietly producing
+  an unsigned or debug-signed artifact that could be handed to a crew by
+  mistake.
+*/
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
 android {
     namespace "com.flukesend.flukelogs"
     compileSdk rootProject.ext.compileSdkVersion
@@ -16,8 +36,24 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            // Only attach the signing config when there is one. Without this
+            // guard Gradle would fall back to the debug key, which installs
+            // fine and can never be updated by a real release.
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
