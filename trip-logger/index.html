@@ -5265,6 +5265,19 @@
   let audioRecStartMs  = 0;
   let audioRecTimer    = null;
 
+  // "09:00" as the crew reads it: 9:00 AM. Returns '' for anything that is not
+  // a stored HH:MM, so the caller can fall back to the daypart on older trips
+  // logged before departures were recorded.
+  function fmtDeparture(hhmm) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || '').trim());
+    if (!m) return '';
+    let h = parseInt(m[1], 10);
+    if (!(h >= 0 && h <= 23)) return '';
+    const suffix = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h}:${m[2]} ${suffix}`;
+  }
+
   function fmtTripDate(iso) {
     const d = new Date(iso + 'T12:00:00');
     return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -5302,9 +5315,15 @@
       const audioStatus = t.has_audio
         ? `<div class="sighting-meta" style="color:var(--success);">✓ Audio · ${fmtSec(t.duration_seconds || 0)}${playsLabel}</div>`
         : '<div class="sighting-meta">🎙 Add audio</div>';
+      // The real departure beats the daypart: two boats on one morning read
+      // identically as "Morning", and the captain cannot tell which row is
+      // theirs. Boat name only when the day had more than one trip, so a
+      // single-boat operator's list stays uncluttered.
+      const when = fmtDeparture(t.trip_time) || t.trip_part || '';
+      const boat = (t.trips_that_day > 1 && t.boat_name) ? ' · ' + escapeHtml(t.boat_name) : '';
       return `<div class="sighting-row" style="cursor:pointer;" onclick="openTripAudio('${t.trip_id}', '${t.trip_date}', '${t.trip_part || ''}')">
         <div>
-          <div class="sighting-species">${fmtTripDate(t.trip_date)}${t.trip_part ? ' · ' + t.trip_part : ''}</div>
+          <div class="sighting-species">${fmtTripDate(t.trip_date)}${when ? ' · ' + escapeHtml(when) : ''}${boat}</div>
           <div class="sighting-meta">${t.species_count} species · ${t.animal_count} animals</div>
           ${audioStatus}
         </div>
