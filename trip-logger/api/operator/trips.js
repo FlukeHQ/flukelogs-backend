@@ -152,8 +152,11 @@ module.exports = async function handler(req, res) {
       if (s.species) g.species.add(s.species);
     }
 
-    // Newest trip first: by date, then created_at so a day's evening trip
-    // sorts above its morning trip. Capped at LIMIT_TRIPS.
+    // Newest trip first: by date, then when the first sighting was recorded.
+    // This is only the pre-sort that picks which trips to return; the final
+    // order is by departure, once the departures have been fetched below. A
+    // crew logging the morning trip after the afternoon one would otherwise
+    // put the day out of order, which is exactly what happened.
     const trips = Array.from(byTrip.values())
       .sort((a, b) =>
         b.trip_date.localeCompare(a.trip_date) ||
@@ -201,8 +204,21 @@ module.exports = async function handler(req, res) {
         audio_url:        audio ? audio.audio_url : null,
         duration_seconds: audio ? audio.duration_seconds : null,
         play_count:       audio ? audio.play_count : null,
+        _seq:             t.created_at || '',
       };
     });
+
+    // Final order: newest day first, and within a day the latest departure
+    // first, so a day always reads back down its own schedule. Sorting on when
+    // a sighting happened to be recorded put the 10:00 above the 09:00 whenever
+    // the second boat's crew logged first. A trip with no stored departure
+    // (logged before departures existed) keeps its record order behind the ones
+    // that have a time.
+    out.sort((a, b) =>
+      b.trip_date.localeCompare(a.trip_date) ||
+      String(b.trip_time || '').localeCompare(String(a.trip_time || '')) ||
+      String(b._seq).localeCompare(String(a._seq)));
+    for (const row of out) delete row._seq;
 
     return res.status(200).json(out);
   } catch (err) {
