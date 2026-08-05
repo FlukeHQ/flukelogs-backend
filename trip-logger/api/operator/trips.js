@@ -168,12 +168,32 @@ module.exports = async function handler(req, res) {
       : [];
     const audioByTrip = new Map(audioRows.map(r => [r.trip_id, r]));
 
+    // The departure the captain actually picked, and which boat ran it. Without
+    // these the list can only say Morning or Afternoon, so an operator running
+    // two boats on one departure sees two rows that read identically and cannot
+    // tell which trip is theirs. Same round-trip shape as the audio lookup.
+    const metaRows = idList
+      ? await pgGet(`logbook_trips?operator_id=eq.${operatorId}&trip_id=in.(${idList})&select=trip_id,trip_time,boat_name`)
+      : [];
+    const metaByTrip = new Map(metaRows.map(r => [r.trip_id, r]));
+
+    // How many trips share each date, so the client knows when a boat name is
+    // the thing that tells two rows apart.
+    const tripsPerDate = new Map();
+    for (const t of trips) {
+      tripsPerDate.set(t.trip_date, (tripsPerDate.get(t.trip_date) || 0) + 1);
+    }
+
     const out = trips.map(t => {
       const audio = t.trip_id ? audioByTrip.get(t.trip_id) : null;
+      const meta = t.trip_id ? metaByTrip.get(t.trip_id) : null;
       return {
         trip_id:          t.trip_id,
         trip_date:        t.trip_date,
         trip_part:        t.trip_part,
+        trip_time:        meta ? meta.trip_time : null,
+        boat_name:        meta ? meta.boat_name : null,
+        trips_that_day:   tripsPerDate.get(t.trip_date) || 1,
         sighting_count:   t.sighting_count,
         animal_count:     t.animal_count,
         species_count:    t.species.size,
