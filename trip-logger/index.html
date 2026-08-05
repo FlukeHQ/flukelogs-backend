@@ -894,6 +894,17 @@
     .app-links-note {
       font-size: 11px; color: var(--text-muted); line-height: 1.5; margin: 10px 0 0;
     }
+    /* Currently watching. Lit green so a glance down the list finds the animal
+       the boat is on, without reading any labels. */
+    .sighting-iconbtn.is-watching {
+      color: var(--success);
+      border-color: var(--success);
+      background: rgba(52,199,89,0.12);
+    }
+    .watch-pill {
+      font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+      color: var(--success); border: 1px solid var(--success); border-radius: 999px;
+      padding: 1px 7px; margin-left: 7px; white-space: nowrap;    }
     .sighting-iconbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.6; }
     .sighting-iconbtn.danger { color: rgba(214,165,151,.85); }
     .sighting-iconbtn.danger:hover { color: #d6a597; border-color: rgba(214,165,151,.45); }
@@ -1924,6 +1935,11 @@
       // logbook_trips so the send flow can fill its whole Trip step.
       boatId: null, boatName: null, tripTime: null, crewNames: [],
       sightings: [], lastLat: null, lastLng: null, photoData: null,
+      // Index into sightings of the animal the boat is on right now, or null
+      // for searching. Drives the "currently watching" banner on the public
+      // widget, and moves when a crew goes back to an animal they already
+      // logged. Persisted, so a mid-trip reload does not lose it.
+      watching: null,
       distanceNM: 0, prevLat: null, prevLng: null,
       // Continuous GPS breadcrumb, captured on every position update.
       // Sent to the server at trip-end; widget draws the real boat path.
@@ -2639,13 +2655,19 @@
     }
   }
 
-  function liveStatus(species, count) {
+  function liveStatus(species, count, opts) {
     if (!trip.liveId) return;
     const body = Object.assign({ action: 'status', tripId: trip.liveId, species }, liveBoatFields());
     if (Number.isFinite(+count)) body.count = +count;
     // Where the sighting happened — becomes a live dot on the public map
     // (delay+fuzz applied server-side). Omitted when GPS hasn't fixed yet.
-    if (Number.isFinite(+trip.lastLat) && Number.isFinite(+trip.lastLng)) {
+    //
+    // bannerOnly leaves the position off on purpose. Going back to an animal
+    // already logged should move the "watching" banner, not drop a second dot
+    // for the same encounter: the map would fill with repeats of one whale, and
+    // the logged trip (the real record) still holds exactly one sighting.
+    const withPosition = !(opts && opts.bannerOnly);
+    if (withPosition && Number.isFinite(+trip.lastLat) && Number.isFinite(+trip.lastLng)) {
       body.lat = +trip.lastLat;
       body.lng = +trip.lastLng;
     }
@@ -2699,6 +2721,8 @@
     if (!count || count < 1) return toast('Enter a count', 'error');
     if (!time) return toast('Set a time', 'error');
     trip.sightings.push({ species, count: parseInt(count), time, notes, lat: trip.lastLat, lng: trip.lastLng });
+    // Whatever you just logged is what you are on, so it becomes the watched one.
+    trip.watching = trip.sightings.length - 1;
     liveStatus(species, parseInt(count)); // live banner + a live dot on the widget map
     document.getElementById('inputSpecies').value = '';
     document.getElementById('inputCount').value = '1';
@@ -2760,14 +2784,20 @@
             </div>
           </div>`;
       }
+      const isWatching = trip.watching === i;
       return `
         <div class="sighting-row">
           <div>
-            <div class="sighting-species">${s.species}</div>
+            <div class="sighting-species">${s.species}${isWatching ? '<span class="watch-pill">Watching</span>' : ''}</div>
             <div class="sighting-meta">${s.time}${s.lat ? ` • ${fmtLatLng(s.lat, s.lng)}` : ''}</div>
           </div>
           <div class="sighting-actions">
             <div class="sighting-badge">×${s.count}</div>
+            <button class="sighting-iconbtn${isWatching ? ' is-watching' : ''}" onclick="toggleWatching(${i})"
+                    aria-pressed="${isWatching}"
+                    aria-label="${isWatching ? 'Stop marking as currently watching' : 'Mark as currently watching'}">
+              <svg viewBox="0 0 24 24"><path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12z" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.2"/></svg>
+            </button>
             <button class="sighting-iconbtn" onclick="startEditSighting(${i})" aria-label="Edit sighting">
               <svg viewBox="0 0 24 24"><path d="M14.5 4.5l5 5L8 21H3v-5L14.5 4.5z" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
@@ -2783,6 +2813,33 @@
       const sel = document.getElementById(`editSpecies_${editingSightingIndex}`);
       if (sel) sel.value = trip.sightings[editingSightingIndex].species;
     }
+  }
+
+  /*
+    Mark which animal the boat is on right now.
+
+    Boats leave an animal and come back: watch a blue whale, log some Risso's
+    on the way past, then return to the blue whale. Logging always marks the
+    newest sighting as watched, which is right in the moment and wrong twenty
+    minutes later, so this puts the banner back where the crew actually is.
+
+    Tapping the watched one again clears it, which reads on the public widget
+    as searching rather than a stale claim to be sitting on a whale.
+  */
+  function toggleWatching(i) {
+    const s = trip.sightings[i];
+    if (!s) return;
+    if (trip.watching === i) {
+      trip.watching = null;
+      liveStatus('', null, { bannerOnly: true });   // empty species clears it
+      toast('Searching', 'success');
+    } else {
+      trip.watching = i;
+      liveStatus(s.species, s.count, { bannerOnly: true });
+      toast(`Watching ${s.species}`, 'success');
+    }
+    saveTrip();
+    renderSightingList();
   }
 
   function startEditSighting(i) {
@@ -2813,6 +2870,11 @@
 
   function removeSighting(index) {
     if (editingSightingIndex === index) editingSightingIndex = -1;
+    // The marker is an index into this array, so a delete either removes the
+    // watched sighting or shifts it down. Left alone it would silently point at
+    // whatever row slid into that slot.
+    if (trip.watching === index) trip.watching = null;
+    else if (typeof trip.watching === 'number' && trip.watching > index) trip.watching -= 1;
     trip.sightings.splice(index, 1);
     saveTrip();
     renderSightingList();
