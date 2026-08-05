@@ -82,6 +82,56 @@ function boatFields(body) {
   return fields;
 }
 
+/*
+  Close any broadcast this boat left open when a new one begins.
+
+  There is no start action: the first heartbeat for a new tripId creates the
+  row, and until now the previous row simply stayed open forever. Restarting a
+  broadcast is common (a crew taps twice, an app relaunches), so production
+  collected rows that read as 17 and 86 hour trips while the boat had been tied
+  up since the afternoon. Every stale row we found died at the exact second its
+  replacement started.
+
+  Each orphan is closed at its OWN last_seen_at, not now, so the record says
+  when the boat actually stopped reporting rather than when someone noticed.
+  Scoped to the same boat: an operator running two boats has two legitimately
+  open broadcasts, and closing by operator alone would kill the other boat's
+  live map mid-trip. With no boat identity on the request we close nothing,
+  since guessing is worse than a stale row.
+*/
+async function closeOrphanedBroadcasts(operatorId, tripId, boat) {
+  const boatFilter = boat.boat_id
+    ? `boat_id=eq.${boat.boat_id}`
+    : (boat.boat_name ? `boat_name=eq.${encodeURIComponent(boat.boat_name)}` : null);
+  if (!boatFilter) return 0;
+
+  const url = process.env.SUPABASE_URL;
+  const query =
+    `live_trips?operator_id=eq.${operatorId}&trip_id=neq.${tripId}` +
+    `&ended_at=is.null&${boatFilter}&select=trip_id,started_at,last_seen_at`;
+  const res = await fetch(`${url}/rest/v1/${query}`, { headers: pgHeaders() });
+  if (!res.ok) throw new Error(`orphan read ${res.status}`);
+  const rows = await res.json();
+
+  for (const r of rows) {
+    // last_seen_at can sit a few milliseconds before started_at on a broadcast
+    // that never reported a position, which would store a negative duration.
+    const endAt = (r.last_seen_at && r.last_seen_at >= r.started_at)
+      ? r.last_seen_at
+      : r.started_at;
+    const patch = await fetch(
+      `${url}/rest/v1/live_trips?trip_id=eq.${r.trip_id}&operator_id=eq.${operatorId}`,
+      {
+        method: 'PATCH',
+        headers: pgHeaders({ 'Prefer': 'return=minimal' }),
+        body: JSON.stringify({ ended_at: endAt }),
+      },
+    );
+    if (!patch.ok) throw new Error(`orphan close ${patch.status}`);
+  }
+  return rows.length;
+}
+
 function cleanPoints(points) {
   if (!Array.isArray(points)) return [];
   return points
@@ -116,6 +166,19 @@ module.exports = async function handler(req, res) {
     const nowISO = new Date().toISOString();
 
     if (action === 'heartbeat') {
+      // A heartbeat with no existing row is the start of a broadcast, and the
+      // only moment worth checking for one this boat left open. Doing it on
+      // every heartbeat would be two extra round trips a few seconds apart for
+      // the whole trip. Failure here is swallowed: a stale row is untidy, a
+      // boat that drops off the live map is not.
+      if (!existing) {
+        try {
+          const closed = await closeOrphanedBroadcasts(operatorId, tripId, boatFields(req.body));
+          if (closed) console.log(`live-trip: closed ${closed} orphaned broadcast(s) for operator ${operatorId}`);
+        } catch (e) {
+          console.error('live-trip: closing orphaned broadcasts failed:', e.message);
+        }
+      }
       const incoming = cleanPoints(req.body.points);
       const track = thinTrack(((existing && existing.track) || []).concat(incoming));
       await upsertRow(Object.assign({
