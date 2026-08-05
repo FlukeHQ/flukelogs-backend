@@ -2829,6 +2829,31 @@
     }
     document.querySelectorAll('#screenReview details.section').forEach(d => d.open = false);
     showScreen('screenReview');
+
+    /*
+      End Trip only stops the live broadcast. Log Trip is what actually saves
+      the sightings, the route and the report, and nothing exists until it is
+      tapped. Crews have ended a trip, seen this screen, and walked off the
+      boat believing they were finished: Atlantis broadcast for two and a half
+      hours on Aug 4 and that afternoon was never recorded.
+
+      So ask here, at the moment they believe the trip is over. Deferred a tick
+      so the review screen is painted behind the question rather than the
+      captain being asked about a screen they cannot see yet.
+    */
+    if (!trip.sentTripId) {
+      setTimeout(() => {
+        // Re-check: they may have tapped Log Trip themselves while this was
+        // queued, and a second prompt after a successful log would be alarming.
+        if (trip.sentTripId) return;
+        const ok = confirm(
+          'Trip ended. Log it now?\n\n' +
+          'Logging is what saves the sightings, the route and the trip report. ' +
+          'Nothing is saved until you do.',
+        );
+        if (ok) logTrip();
+      }, 0);
+    }
   }
 
   // The post-log UI: button locks green, the summary line states what is now
