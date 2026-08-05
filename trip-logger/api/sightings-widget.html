@@ -725,7 +725,7 @@
       <div class="now-species" id="now-species"></div>
       <div class="now-meta" id="now-meta"></div>
     </div>
-    <a class="now-cta" href="https://enoceantours.com/tours" target="_blank">Book Now</a>
+    <a class="now-cta" id="nowCta" href="#" target="_blank" rel="noopener" hidden>Book Now</a>
   </div>
 
   <!-- Filter + Map: D · legend column on desktop, C · segmented + rail on mobile -->
@@ -779,9 +779,9 @@
     </button>
   </div>
 
-  <div class="cta-strip">
-    <div class="cta-text">Spots are limited to 6 guests. Book early.</div>
-    <a class="cta-btn" href="https://enoceantours.com/tours" target="_blank">Book a Trip &rarr;</a>
+  <div class="cta-strip" id="ctaStrip" hidden>
+    <div class="cta-text">Sightings change every day. Book your trip.</div>
+    <a class="cta-btn" id="ctaBtn" href="#" target="_blank" rel="noopener">Book a Trip &rarr;</a>
   </div>
 </div>
 
@@ -797,7 +797,32 @@ const FEED_LIMIT = 100;
 // every operator's sightings into the embed).
 const OP = (typeof window !== 'undefined' && window.__OP_CONFIG) || {};
 const OPERATOR_ID = OP.id || null;
-const BOOK_URL = 'https://enoceantours.com/tours';
+/*
+  Where Book Now sends a guest, from the operator's own record.
+
+  Both buttons used to be hardcoded to one operator's tour page, on every
+  operator's widget. Princess showed their own sightings page in their own
+  office and every click went to a competitor: a working button pointed at the
+  wrong company, which is worse than a broken one.
+
+  Null hides the buttons rather than falling back to anyone. They start hidden
+  in the markup too, so a failure to run this leaves no button instead of a
+  wrong one. A missing button costs a click; the old default cost a customer.
+*/
+const BOOK_URL = (OP && typeof OP.booking_url === 'string' && OP.booking_url.trim())
+  ? OP.booking_url.trim()
+  : null;
+
+function applyBookingLinks() {
+  const now = document.getElementById('nowCta');
+  const strip = document.getElementById('ctaStrip');
+  const btn = document.getElementById('ctaBtn');
+  if (!BOOK_URL) return;               // stay hidden
+  if (now) { now.href = BOOK_URL; now.hidden = false; }
+  if (btn) btn.href = BOOK_URL;
+  if (strip) strip.hidden = false;
+}
+applyBookingLinks();
 
 const WHALE_SPECIES = ['Humpback Whale','Blue Whale','Gray Whale','Fin Whale','Minke Whale','Orca','Transient Orcas','Offshore Orcas','Resident Orcas','Sperm Whale'];
 const DOLPHIN_SPECIES = ['Common Dolphin','Pacific White-sided Dolphin',"Risso's Dolphin","Risso's dolphins",'Bottlenose Dolphin','Coastal Bottlenose Dolphin','Northern Right Whale Dolphin',"Dall's Porpoise",'Harbor Porpoise'];
