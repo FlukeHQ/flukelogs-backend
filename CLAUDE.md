@@ -13,13 +13,21 @@ current.
 ## Standing constraints
 
 - **The database is the Flukesend project** (`ockpylhphwhumgulhvzv`), shared
-  with the other app (repo `flukesend-hub/flukesend`, separate deployment).
+  with the other app (repo `FlukeHQ/flukesend`, separate deployment).
   **Schema changes go in that repo's `docs/` as numbered migrations**, never in
   this repo's frozen `db/migrations/`.
 - **`trip-logger-backend.vercel.app` must keep serving this app.** The shipped
   unlisted iOS binary pins it as `server.url`, the FareHarbor webhook points at
   it, and operator embeds load from it. Changing the deployment URL means a new
-  App Store binary.
+  App Store binary. This is also why **Vercel deployment protection must stay
+  OFF on this project**: Standard Protection walls the generated production
+  URL, which would lock every captain out. Revisit only after a binary ships
+  pointing at a custom domain (`flukelogs.com` is bought and already aliases
+  this deployment, unused until then).
+- **Where things live (since 2026-08-04):** this repo is
+  `FlukeHQ/flukelogs-backend` on GitHub; the Vercel project is
+  `trip-logger-backend` in the FlukeSend team. The name mismatch is
+  intentional, see the constraint above. Do not rename either side.
 - **Flukelogs sends no guest email.** Guest delivery is Flukesend's job, one
   gallery email per guest. The legacy PDF, Gmail SMTP, and Mailchimp code paths
   are dead and awaiting a cleanup pass; do not revive them or route new guest

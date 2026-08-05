@@ -4,7 +4,7 @@ The boat app of the **Flukesend platform**: captains log whale-watch trips from 
 
 **Flukelogs sends no guest email.** That's a design decision (2026-07-31, the "one guest email" architecture): guests scan the operator's Flukesend QR on the boat, the captain logs the trip here, and at home the operator's Flukesend send arrives **pre-filled** — species, head counts, boat, departure, crew — so the guest gets exactly one email: their branded gallery with the trip report. The PDF/Gmail/Mailchimp recap pipeline that used to live here is retired (legacy code paths remain until a cleanup pass; nothing calls them from current clients).
 
-Sister repo: [`flukesend-hub/flukesend`](https://github.com/flukesend-hub/flukesend) — the Next.js app (delivery, reviews, billing, admin) **and the home of all database migrations** (`docs/0001…`). This repo's `db/migrations/` is frozen history from before the merge.
+Sister repo: [`FlukeHQ/flukesend`](https://github.com/FlukeHQ/flukesend) — the Next.js app (delivery, reviews, billing, admin) **and the home of all database migrations** (`docs/0001…`). This repo's `db/migrations/` is frozen history from before the merge.
 
 ## The one-database architecture
 
@@ -79,7 +79,7 @@ Princess runs concurrent departures with a different photographer on each boat, 
 
 - Trip identity is **per device**, not per login, so two photographers can share one account or use their own and still log fully independent trips.
 - The departure picker defaults to the **nearest** scheduled time, not the latest one already past, so boarding the 10:00 at 09:50 does not stamp the trip 09:00 — the departure another boat may be out running.
-- Flukesend's send prefill matches a logged trip on **boat + date + departure**, so each photographer's send fills from their own boat's log ([`src/lib/logbook.ts`](https://github.com/flukesend-hub/flukesend/blob/main/src/lib/logbook.ts)).
+- Flukesend's send prefill matches a logged trip on **boat + date + departure**, so each photographer's send fills from their own boat's log ([`src/lib/logbook.ts`](https://github.com/FlukeHQ/flukesend/blob/main/src/lib/logbook.ts)).
 - Widget trip cards on a multi-trip day are titled with the departure and boat (`9:00 AM · Princess`) instead of a bare daypart that would read identically for both.
 
 ## History
