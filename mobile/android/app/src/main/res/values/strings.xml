@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Flukelogs</string>
+    <string name="title_activity_main">Flukelogs</string>
+    <string name="package_name">com.flukesend.flukelogs</string>
+    <string name="custom_url_scheme">com.flukesend.flukelogs</string>
+
+    <!-- What a captain sees if they press and hold the persistent notification
+         Android shows while the trip is being tracked. The plugin reads this
+         key by name; the notification itself is titled from the app, in
+         index.html, so the wording a crew reads day to day lives with the rest
+         of the copy. -->
+    <string name="background_geolocation_notification_channel_name">Trip tracking</string>
+</resources>
