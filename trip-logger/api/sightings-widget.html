@@ -799,16 +799,31 @@ const OPERATOR_ID = OP.id || null;
 const BOOK_URL = 'https://enoceantours.com/tours';
 
 const WHALE_SPECIES = ['Humpback Whale','Blue Whale','Gray Whale','Fin Whale','Minke Whale','Orca','Transient Orcas','Offshore Orcas','Resident Orcas','Sperm Whale'];
-const DOLPHIN_SPECIES = ['Common Dolphin','Pacific White-sided Dolphin',"Risso's Dolphin",'Bottlenose Dolphin','Coastal Bottlenose Dolphin','Northern Right Whale Dolphin',"Dall's Porpoise",'Harbor Porpoise'];
+const DOLPHIN_SPECIES = ['Common Dolphin','Pacific White-sided Dolphin',"Risso's Dolphin","Risso's dolphins",'Bottlenose Dolphin','Coastal Bottlenose Dolphin','Northern Right Whale Dolphin',"Dall's Porpoise",'Harbor Porpoise'];
 const BIRD_SPECIES = ['Black-footed Albatross'];
+
+// Species names are operator-editable free text (Settings > Species List),
+// so "Humpback whale" and "Humpback Whale" both show up in real sighting
+// data depending on how an operator typed it. Every lookup below matched by
+// exact string, so anything off by case (or a curly vs straight apostrophe)
+// silently fell to the grey default dot and the "Other" bucket — confirmed
+// on Princess, where every species used lowercase second words and every
+// one of them was rendering grey. Normalize once, look up normalized.
+function normalizeSpeciesKey(name) {
+  return String(name || '').trim().toLowerCase().replace(/[‘’]/g, "'");
+}
+const WHALE_SPECIES_SET = new Set(WHALE_SPECIES.map(normalizeSpeciesKey));
+const DOLPHIN_SPECIES_SET = new Set(DOLPHIN_SPECIES.map(normalizeSpeciesKey));
+const BIRD_SPECIES_SET = new Set(BIRD_SPECIES.map(normalizeSpeciesKey));
 
 // Buckets a species into one of the four segmented-control groups. Anything
 // not whale/dolphin/bird (sharks, otters, seals, mola mola, etc.) falls into
 // "other" — the segmented control hides the group when its count is zero.
 function speciesKind(name) {
-  if (WHALE_SPECIES.includes(name)) return 'whale';
-  if (DOLPHIN_SPECIES.includes(name)) return 'dolphin';
-  if (BIRD_SPECIES.includes(name)) return 'bird';
+  const key = normalizeSpeciesKey(name);
+  if (WHALE_SPECIES_SET.has(key)) return 'whale';
+  if (DOLPHIN_SPECIES_SET.has(key)) return 'dolphin';
+  if (BIRD_SPECIES_SET.has(key)) return 'bird';
   return 'other';
 }
 
@@ -847,7 +862,13 @@ const SPECIES_META = {
   'Black-footed Albatross':        { icon: '🐦', color: '#d4a017', borderColor: '#a07800' },
   'default':                       { icon: '🌊', color: '#4a5568', borderColor: '#2d3748' },
 };
-const sm = n => SPECIES_META[n] || SPECIES_META['default'];
+// Same normalization as speciesKind, built once from the table above so a
+// duplicate entry (e.g. the plural "Risso’s dolphins") stays intentional —
+// it covers a genuinely different real-world spelling, not a casing miss.
+const SPECIES_META_BY_KEY = new Map(
+  Object.entries(SPECIES_META).map(([k, v]) => [normalizeSpeciesKey(k), v]),
+);
+const sm = n => SPECIES_META_BY_KEY.get(normalizeSpeciesKey(n)) || SPECIES_META['default'];
 
 // ── State ────────────────────────────────────────────────────────────────────
 let allData = [];
