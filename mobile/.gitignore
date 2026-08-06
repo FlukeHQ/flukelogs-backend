@@ -15,5 +15,26 @@ ios/DerivedData/
 # Auto-generated Cordova plugin shim folder.
 ios/capacitor-cordova-ios-plugins/
 
+# Capacitor copies www/ here on every `cap sync`; regenerated from webDir.
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+
+# Gradle build artefacts and local machine paths.
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/capacitor-cordova-android-plugins/
+
+# Signing material. NEVER commit these. The release keystore is the app's
+# identity: lose it and no future build can update an installed app, since
+# Android refuses an APK signed with a different key. It lives outside the
+# repo and is backed up in a password manager.
+*.keystore
+*.jks
+keystore.properties
+android/keystore.properties
+
 # macOS noise.
 .DS_Store

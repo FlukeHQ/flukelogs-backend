@@ -8,7 +8,8 @@
     "open": "cap open ios"
   },
   "dependencies": {
-    "@capacitor-community/background-geolocation": "^1.2.20"
+    "@capacitor-community/background-geolocation": "^1.2.20",
+    "@capacitor/android": "^6.2.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.0",
