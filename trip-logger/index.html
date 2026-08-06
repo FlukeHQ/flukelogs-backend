@@ -2492,11 +2492,73 @@
     }
   }
 
-  function startTrip() {
+  /*
+    Ask the server whether another phone is already broadcasting this boat,
+    before a trip starts. Warn only; never block. Two crew both logged the
+    Princess 9:00 on 2026-08-06 and the result was two trip logs of one trip
+    and doubled sightings on the public widget, found hours later by eye.
+
+    Fail open everywhere, with a short leash on the request. This runs at the
+    dock on marine signal, and Start Trip hanging on a lookup that exists only
+    to print a warning would be a worse bug than the duplicate it prevents.
+    No boat selected means nothing to check against: roster-less operators
+    skip the whole thing.
+  */
+  async function checkBoatAlreadyLive(boat, tripId) {
+    if (!boat) return null;
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) return null;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 4000);
+      const res = await fetch('/api/live-trip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action: 'check', tripId: tripId, boatId: boat.id, boatName: boat.name }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) return null;
+      const j = await res.json();
+      return (j && j.live) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Guards the check against a double tap while it is in flight. The check
+  // itself is capped at four seconds, so this can never wedge the button.
+  let startCheckBusy = false;
+
+  async function startTrip() {
     const passengers = document.getElementById('inputPassengers').value;
     if (!passengers || passengers < 1) return toast('Enter passenger count', 'error');
-    trip.startTime = new Date();
+    if (startCheckBusy) return;
     const boat = operatorRoster.boats.find(b => b.id === selBoatId) || null;
+
+    // Minted before the check so the lookup can exclude this trip's own row,
+    // and reused below so the broadcast that follows carries the same id.
+    const liveId = mintLiveId();
+    startCheckBusy = true;
+    try {
+      const live = await checkBoatAlreadyLive(boat, liveId);
+      if (live) {
+        const when = new Date(live.startedAt);
+        const at = isNaN(when.getTime())
+          ? ''
+          : ' (started ' + when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ')';
+        const ok = window.confirm(
+          ((boat && boat.name) || 'This boat') + ' is already being logged on another phone' + at + '.\n\n' +
+          'Two phones logging the same trip makes a duplicate trip log and doubles the sightings on your public page. ' +
+          'Only continue if this really is a different trip.'
+        );
+        if (!ok) { startCheckBusy = false; return; }
+      }
+    } finally {
+      startCheckBusy = false;
+    }
+
+    trip.startTime = new Date();
     trip.boatId = boat ? boat.id : null;
     trip.boatName = boat ? boat.name : null;
     trip.tripTime = selTripTime || null;
@@ -2509,7 +2571,7 @@
     trip.waterTemp = document.getElementById('inputWaterTemp').value;
     trip.visibility = document.getElementById('inputVisibility').value;
     trip.conditions = document.getElementById('inputConditions').value;
-    trip.liveId = mintLiveId();
+    trip.liveId = liveId;
     setCurrentTime();
     startGPS();
     startDurationTimer();

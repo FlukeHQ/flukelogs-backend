@@ -183,8 +183,15 @@ module.exports = async function handler(req, res) {
       Scoped to superseded broadcasts only. A closed broadcast with nothing
       after it still reopens, so a crew who ends a trip and carries on logging
       is unaffected.
+
+      Covers status as well as heartbeat, learned the hard way. The first
+      version guarded heartbeats only, and on 2026-08-06 an abandoned phone
+      whose broadcast had been superseded kept posting status for ninety
+      minutes: each one bumped last_seen_at on the dead row and appended its
+      live sighting dots there, so the whales that phone logged never appeared
+      on the public map. Same resurrection, different verb.
     */
-    if (action === 'heartbeat' && existing && existing.ended_at) {
+    if ((action === 'heartbeat' || action === 'status') && existing && existing.ended_at) {
       const url = process.env.SUPABASE_URL;
       const boatFilter = existing.boat_id
         ? `boat_id=eq.${existing.boat_id}`
@@ -199,11 +206,51 @@ module.exports = async function handler(req, res) {
         if (lookup.ok) {
           const newer = await lookup.json();
           if (newer.length) {
-            console.log(`live-trip: ignoring heartbeat for superseded broadcast ${tripId}`);
+            console.log(`live-trip: ignoring ${action} for superseded broadcast ${tripId}`);
             return res.status(200).json({ ok: true, superseded: true });
           }
         }
       }
+    }
+
+    /*
+      Pre-start look: is another phone already broadcasting this boat?
+
+      Exists because two crew both logged the Princess 9:00 on 2026-08-06,
+      producing two trip logs of one trip and doubled sightings on the public
+      widget. The app asks this before Start Trip and warns; it does not block,
+      because the server cannot know that a second start is wrong, only that it
+      is probably a duplicate.
+
+      Read only, and every failure path answers "nobody live" on purpose: this
+      runs at the dock on marine signal, and a start must never hang or fail on
+      a lookup that exists purely to print a warning.
+
+      Only a broadcast still actually beating counts. An open row whose phone
+      died an hour ago is an orphan for the start path to close, not a reason
+      to warn anyone.
+    */
+    if (action === 'check') {
+      const fields = boatFields(req.body);
+      const boatFilter = fields.boat_id
+        ? `boat_id=eq.${fields.boat_id}`
+        : (fields.boat_name ? `boat_name=eq.${encodeURIComponent(fields.boat_name)}` : null);
+      if (!boatFilter) return res.status(200).json({ live: null });
+      const url = process.env.SUPABASE_URL;
+      const q =
+        `live_trips?operator_id=eq.${operatorId}&trip_id=neq.${tripId}` +
+        `&ended_at=is.null&${boatFilter}` +
+        `&select=trip_id,started_at,last_seen_at&order=started_at.desc&limit=1`;
+      const lookup = await fetch(`${url}/rest/v1/${q}`, { headers: pgHeaders() });
+      if (!lookup.ok) return res.status(200).json({ live: null });
+      const rows = await lookup.json();
+      const row = rows && rows[0];
+      const FRESH_MS = 10 * 60 * 1000;
+      const fresh = row && row.last_seen_at &&
+        (Date.now() - Date.parse(row.last_seen_at)) < FRESH_MS;
+      return res.status(200).json({
+        live: fresh ? { startedAt: row.started_at, lastSeenAt: row.last_seen_at } : null,
+      });
     }
 
     if (action === 'heartbeat') {
