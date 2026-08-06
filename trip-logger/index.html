@@ -2543,16 +2543,28 @@
     try {
       const live = await checkBoatAlreadyLive(boat, liveId);
       if (live) {
+        /*
+          A block, not a warning. It shipped as a confirm and Slater tightened
+          it the same day: the same boat cannot be on two trips at once, so
+          there is no legitimate answer to "start anyway" and offering one just
+          re-opens the duplicate-log hole one tap deep.
+
+          The way out when the block is wrong is time, not a button. A dead
+          broadcast stops counting five minutes after its last beat, and End
+          Trip on the other phone clears it instantly. Both are stated so the
+          person at the dock knows what to do rather than what they did wrong.
+        */
         const when = new Date(live.startedAt);
         const at = isNaN(when.getTime())
           ? ''
           : ' (started ' + when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ')';
-        const ok = window.confirm(
-          ((boat && boat.name) || 'This boat') + ' is already being logged on another phone' + at + '.\n\n' +
-          'Two phones logging the same trip makes a duplicate trip log and doubles the sightings on your public page. ' +
-          'Only continue if this really is a different trip.'
+        toast(
+          ((boat && boat.name) || 'This boat') + ' is already being logged on another phone' + at + '. ' +
+          'End that trip first. If that phone died, this clears by itself in about five minutes.',
+          'error'
         );
-        if (!ok) { startCheckBusy = false; return; }
+        startCheckBusy = false;
+        return;
       }
     } finally {
       startCheckBusy = false;

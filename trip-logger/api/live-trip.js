@@ -245,7 +245,11 @@ module.exports = async function handler(req, res) {
       if (!lookup.ok) return res.status(200).json({ live: null });
       const rows = await lookup.json();
       const row = rows && rows[0];
-      const FRESH_MS = 10 * 60 * 1000;
+      // Five minutes, not ten. While this was a warning, staleness cost a
+      // dialog; now that it is a block, staleness locks the boat out until
+      // the row ages out, and five missed beats already means that phone is
+      // gone. Halving the window halves the worst wrongful lockout.
+      const FRESH_MS = 5 * 60 * 1000;
       const fresh = row && row.last_seen_at &&
         (Date.now() - Date.parse(row.last_seen_at)) < FRESH_MS;
       return res.status(200).json({
