@@ -1,5 +1,25 @@
 apply plugin: 'com.android.application'
 
+/*
+  Release signing, read from a file that is never committed.
+
+  The keystore is the app's identity. Android refuses an update signed with a
+  different key, so losing it means every naturalist has to uninstall and
+  reinstall to get a new build. It lives outside the repo and is backed up in a
+  password manager.
+
+  keystore.properties is gitignored and holds the path and password. When it is
+  absent, release signing is simply not configured, so a clone still builds
+  debug and assembleRelease produces an unsigned artifact rather than silently
+  falling back to the debug key. A debug-signed build installs fine and can
+  never be updated by a real release, which is the trap worth avoiding.
+*/
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
 android {
     namespace "com.flukesend.flukelogs"
     compileSdk rootProject.ext.compileSdkVersion
@@ -16,8 +36,21 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
