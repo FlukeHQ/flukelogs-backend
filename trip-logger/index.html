@@ -919,6 +919,23 @@
       margin: 16px 0 14px; cursor: pointer;
     }
     .consent-check input { margin-top: 3px; width: 17px; height: 17px; flex: 0 0 auto; }
+    .consent-check input:disabled + span { opacity: .45; }
+    .consent-scroll {
+      max-height: 46vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+      border: 1px solid var(--hair-2); border-radius: 10px;
+      padding: 12px 14px; background: rgba(255,255,255,0.02);
+    }
+    .consent-hint {
+      font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--text-muted); text-align: center; margin-top: 8px;
+    }
+    /* The injected policy inherits the app's dark theme; its own page styles
+       stay on its own page. Just sizes, so it reads as one document. */
+    .consent-policy h1 { font-size: 17px; margin: 18px 0 4px; }
+    .consent-policy h2 { font-size: 14px; margin: 16px 0 6px; }
+    .consent-policy p, .consent-policy li { font-size: 12.5px; line-height: 1.55; color: var(--text-muted); }
+    .consent-policy .meta { font-size: 11px; color: var(--text-muted); }
+    .consent-policy footer { font-size: 11px; color: var(--text-muted); margin-top: 14px; }
     /* Currently watching. Lit green so a glance down the list finds the animal
        the boat is on, without reading any labels. */
     .sighting-iconbtn.is-watching {
@@ -1916,12 +1933,19 @@
 <div id="consentGate" class="consent-gate" style="display:none;">
   <div class="consent-card">
     <div class="consent-title">Before you start</div>
-    <p>Flukelogs records your location <b>only between Start Trip and End Trip</b>. Nothing runs at any other time.</p>
-    <p><b>End the trip before you leave the boat.</b> If you forget, it keeps recording, including your drive home.</p>
-    <p>Guests see your boat's position on a delay, rounded to about a kilometre. They never see exactly where you are.</p>
-    <p><a href="/privacy.html" target="_blank" rel="noopener">Read the full privacy policy &rarr;</a></p>
+    <div class="consent-scroll" id="consentScroll" onscroll="consentScrollCheck()">
+      <p>Flukelogs records your location <b>only between Start Trip and End Trip</b>. Nothing runs at any other time.</p>
+      <p><b>End the trip before you leave the boat.</b> If you forget, it keeps recording, including your drive home.</p>
+      <p>Guests see your boat's position on a delay, rounded to about a kilometre. They never see exactly where you are.</p>
+      <!-- The full policy, loaded from /privacy.html so there is exactly one
+           copy of it. If the load fails the summary above stands alone and
+           the box unlocks, since a network hiccup must not brick sign in. -->
+      <div id="consentPolicy" class="consent-policy"></div>
+      <p><a href="/privacy.html" target="_blank" rel="noopener">Open the privacy policy in its own tab &rarr;</a></p>
+    </div>
+    <div class="consent-hint" id="consentScrollHint">Scroll to the end to continue</div>
     <label class="consent-check">
-      <input type="checkbox" id="consentCheck" onchange="consentBoxChanged()">
+      <input type="checkbox" id="consentCheck" onchange="consentBoxChanged()" disabled>
       <span>I have read this and agree to location recording during my trips</span>
     </label>
     <button class="btn btn-primary" id="consentAgreeBtn" onclick="acceptConsent()" disabled>I understand and agree</button>
@@ -3976,15 +4000,58 @@
     three claims are true today: recording runs only between Start Trip and
     End Trip, and the public map is delayed and rounded server-side.
   */
+  let consentScrolled = false;
+
   function showConsentGate(version) {
     const el = document.getElementById('consentGate');
     if (!el) return;
     el.dataset.version = version || '';
     el.style.display = 'flex';
+    consentScrolled = false;
     const box = document.getElementById('consentCheck');
     const btn = document.getElementById('consentAgreeBtn');
-    if (box) { box.checked = false; }
+    if (box) { box.checked = false; box.disabled = true; }
     if (btn) { btn.disabled = true; }
+    loadConsentPolicy();
+  }
+
+  /*
+    The full policy renders inside the gate so agreeing means having had the
+    whole text under your thumb, not a summary with a link nobody taps. It is
+    fetched from /privacy.html rather than duplicated here, so there is one
+    copy of the words and this gate can never drift out of date. If the fetch
+    fails, the summary stands alone and the box unlocks: a network hiccup must
+    never brick sign in.
+  */
+  async function loadConsentPolicy() {
+    const holder = document.getElementById('consentPolicy');
+    if (!holder) return consentScrollCheck();
+    try {
+      const res = await fetch('/privacy.html');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      const wrap = doc.querySelector('.wrap');
+      if (wrap) holder.innerHTML = wrap.innerHTML;
+    } catch (e) {
+      console.warn('consent policy load failed:', e.message);
+    }
+    // After layout settles: short content (or a failed load) unlocks at once.
+    const sc = document.getElementById('consentScroll');
+    if (sc) sc.scrollTop = 0;
+    setTimeout(consentScrollCheck, 60);
+  }
+
+  function consentScrollCheck() {
+    if (consentScrolled) return;
+    const sc = document.getElementById('consentScroll');
+    if (!sc) return;
+    const atEnd = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 24;
+    if (!atEnd) return;
+    consentScrolled = true;
+    const box = document.getElementById('consentCheck');
+    const hint = document.getElementById('consentScrollHint');
+    if (box) box.disabled = false;
+    if (hint) hint.style.display = 'none';
   }
 
   function consentBoxChanged() {
