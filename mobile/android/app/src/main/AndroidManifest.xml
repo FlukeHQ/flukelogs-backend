@@ -38,4 +38,17 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+      Audio notes. The app records through the browser's MediaRecorder rather
+      than a Capacitor plugin, so nothing merges these in the way the location
+      plugin merges its own. Without them the WebView denies getUserMedia
+      before Android ever asks the user, and the captain sees Access Denied
+      with no permission prompt and nothing to grant in Settings.
+
+      MODIFY_AUDIO_SETTINGS comes with it because the WebView adjusts the audio
+      mode when it opens a capture stream.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 </manifest>
