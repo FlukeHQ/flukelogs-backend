@@ -10,6 +10,7 @@
 
 const { authenticate } = require('../lib/auth');
 const { getOperator, publicOperatorView } = require('../lib/operators');
+const { CONSENT_VERSION, hasConsented } = require('../lib/consent');
 
 // The operator's Flukesend roster: boats, crew, and scheduled departures.
 // One database since the merge, so the boat app reads the same rows the
@@ -58,9 +59,10 @@ module.exports = async function handler(req, res) {
   if (!auth) return;
 
   const { user, operatorId, isSuperAdmin } = auth;
-  const [operator, roster] = await Promise.all([
+  const [operator, roster, consented] = await Promise.all([
     operatorId ? getOperator(operatorId) : null,
     operatorId ? getRoster(operatorId) : { boats: [], crew: [], trip_times: [] },
+    hasConsented(user.id),
   ]);
 
   return res.status(200).json({
@@ -71,5 +73,9 @@ module.exports = async function handler(req, res) {
     },
     operator: publicOperatorView(operator),
     roster,
+    // The crew tracking disclosure. accepted:false makes the app show the
+    // consent gate before anything else; the lookup fails open, so a broken
+    // read reads as accepted rather than locking a captain out.
+    consent: { version: CONSENT_VERSION, accepted: consented },
   });
 };

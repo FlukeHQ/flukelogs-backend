@@ -894,6 +894,31 @@
     .app-links-note {
       font-size: 11px; color: var(--text-muted); line-height: 1.5; margin: 10px 0 0;
     }
+    /* Consent gate. Above everything, opaque enough that the app behind it
+       is visibly there but unmistakably not usable yet. */
+    .consent-gate {
+      position: fixed; inset: 0; z-index: 300;
+      background: rgba(8,12,14,0.94);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .consent-card {
+      max-width: 430px; width: 100%;
+      background: var(--card, #12181b); border: 1px solid var(--hair-2);
+      border-radius: 16px; padding: 22px;
+    }
+    .consent-card p { font-size: 14px; line-height: 1.55; color: var(--text); margin: 0 0 12px; }
+    .consent-card a { color: var(--accent, #7fd3c0); }
+    .consent-title {
+      font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--text-muted); font-weight: 700; margin-bottom: 12px;
+    }
+    .consent-check {
+      display: flex; gap: 10px; align-items: flex-start;
+      font-size: 13px; line-height: 1.5; color: var(--text);
+      margin: 16px 0 14px; cursor: pointer;
+    }
+    .consent-check input { margin-top: 3px; width: 17px; height: 17px; flex: 0 0 auto; }
     /* Currently watching. Lit green so a glance down the list finds the animal
        the boat is on, without reading any labels. */
     .sighting-iconbtn.is-watching {
@@ -1480,6 +1505,20 @@
     <button class="btn btn-primary" id="settingsSaveBtn" onclick="saveSettings()">Save Settings</button>
     <button class="btn btn-outline" type="button" onclick="showScreen('screenStart')">Back</button>
 
+    <!-- What the app records. The same wording every crew member accepted at
+         the consent gate, permanently findable afterwards: a disclosure that
+         can only be read once, at sign in, under a deadline of wanting to use
+         the app, is not really readable at all. -->
+    <div class="app-links">
+      <div class="app-links-label">What this app records</div>
+      <p class="app-links-note" style="margin-top:0;">
+        Your location is recorded <b>only between Start Trip and End Trip</b>. Nothing runs at any other time.
+        <b>End the trip before you leave the boat.</b> If you forget, it keeps recording, including your drive home.
+        Guests see your boat's position on a delay, rounded to about a kilometre; they never see exactly where you are.
+      </p>
+      <a class="btn btn-outline" style="margin-top:10px;" href="/privacy.html" target="_blank" rel="noopener">Read the full privacy policy</a>
+    </div>
+
     <!-- Get the app. Below Save on purpose: a captain opens Settings to change
          something, not to install anything. This is for the moment a new crew
          member is handed a phone and asked where the app comes from, so it
@@ -1870,6 +1909,24 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Crew tracking consent. display:flex is set by showConsentGate() when
+     /api/me says the current wording has not been accepted; acceptConsent()
+     hides it only after the server confirms the row is written. -->
+<div id="consentGate" class="consent-gate" style="display:none;">
+  <div class="consent-card">
+    <div class="consent-title">Before you start</div>
+    <p>Flukelogs records your location <b>only between Start Trip and End Trip</b>. Nothing runs at any other time.</p>
+    <p><b>End the trip before you leave the boat.</b> If you forget, it keeps recording, including your drive home.</p>
+    <p>Guests see your boat's position on a delay, rounded to about a kilometre. They never see exactly where you are.</p>
+    <p><a href="/privacy.html" target="_blank" rel="noopener">Read the full privacy policy &rarr;</a></p>
+    <label class="consent-check">
+      <input type="checkbox" id="consentCheck" onchange="consentBoxChanged()">
+      <span>I have read this and agree to location recording during my trips</span>
+    </label>
+    <button class="btn btn-primary" id="consentAgreeBtn" onclick="acceptConsent()" disabled>I understand and agree</button>
+  </div>
+</div>
 
 <script>
   const API_URL = '/api/send-report';
@@ -3909,6 +3966,69 @@
     }
   }
 
+  /*
+    The consent gate. A full screen overlay, not a screen: screens can be
+    navigated away from and this one must not be. It sits over everything,
+    including Start Trip, until the box is ticked and the server confirms
+    the row is written. There is no dismiss.
+
+    The wording is the product's actual behaviour, written plainly. All
+    three claims are true today: recording runs only between Start Trip and
+    End Trip, and the public map is delayed and rounded server-side.
+  */
+  function showConsentGate(version) {
+    const el = document.getElementById('consentGate');
+    if (!el) return;
+    el.dataset.version = version || '';
+    el.style.display = 'flex';
+    const box = document.getElementById('consentCheck');
+    const btn = document.getElementById('consentAgreeBtn');
+    if (box) { box.checked = false; }
+    if (btn) { btn.disabled = true; }
+  }
+
+  function consentBoxChanged() {
+    const box = document.getElementById('consentCheck');
+    const btn = document.getElementById('consentAgreeBtn');
+    if (btn && box) btn.disabled = !box.checked;
+  }
+
+  async function acceptConsent() {
+    const el = document.getElementById('consentGate');
+    const btn = document.getElementById('consentAgreeBtn');
+    if (!el || !btn) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Saving';
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) return sessionExpired();
+      const res = await fetch('/api/consent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ version: el.dataset.version }),
+      });
+      const body = await res.json().catch(() => ({}));
+      // 409 means the wording changed since this page loaded. Show the new
+      // version rather than recording acceptance of words nobody read.
+      if (res.status === 409 && body.version) {
+        el.dataset.version = body.version;
+        btn.innerHTML = 'I understand and agree';
+        toast('The wording was updated. Please read it again.', 'error');
+        consentBoxChanged();
+        return;
+      }
+      if (!res.ok || !body.success) throw new Error(body.error || 'HTTP ' + res.status);
+      el.style.display = 'none';
+    } catch (e) {
+      btn.innerHTML = 'I understand and agree';
+      consentBoxChanged();
+      toast(e.message || 'Could not save. Try again.', 'error');
+    }
+  }
+
   async function loadMe(token) {
     try {
       const res = await fetch('/api/me', {
@@ -3937,6 +4057,13 @@
       }
       applyOperatorChrome();
       isSuperAdmin = !!(body.user && body.user.is_super_admin);
+
+      // The crew tracking disclosure. Shown before anything else when this
+      // person has not accepted the current wording; super admins are exempt
+      // because they run no trips and are tracked by nothing.
+      if (!isSuperAdmin && body.consent && body.consent.accepted === false) {
+        showConsentGate(body.consent.version);
+      }
 
       // Super-admins don't run trips — they onboard operators and edit each
       // operator's config. Hide the captain-side entries (Get Started / Past
