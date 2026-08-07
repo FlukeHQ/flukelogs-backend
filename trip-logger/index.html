@@ -179,6 +179,48 @@
     /* ── Screen wrappers + sections ─────────────────────────────── */
     .screen { display: none; flex: 1; padding: 14px 18px calc(24px + env(safe-area-inset-bottom)); overflow-y: auto; max-width: 560px; width: 100%; margin: 0 auto; }
     .screen.active { display: block; animation: screenIn 0.3s var(--ease); }
+    /*
+      The whale card must not scroll, and in the shipped iOS webview
+      shrinking content can never guarantee that: contentInset automatic
+      makes the visible window shorter than what CSS measures (the same
+      inset that needed the header slab), so an in-flow page always has a
+      few dozen phantom pixels of scroll. Fixed positioning pins to the
+      visible viewport, the box sticky headers pin to, which is the honest
+      one. Inside, the card is a flex column where everything keeps its
+      natural height except the photo, which absorbs exactly the leftover
+      space: taller phone, taller photo, and no phone scrolls. The top
+      offset is set at open time from the header's real on-screen bottom.
+    */
+    #screenWhaleDetail.active {
+      position: fixed;
+      top: var(--whale-card-top, 71px);
+      left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 10px 18px calc(12px + env(safe-area-inset-bottom));
+      z-index: 5;
+    }
+    #screenWhaleDetail .section {
+      flex: 1;
+      min-height: 0;
+      margin-bottom: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    #whaleDetailBody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    #whaleDetailBody > * { flex: 0 0 auto; }
+    #whaleDetailBody .whale-photo-box {
+      flex: 1 1 auto;
+      min-height: 110px;
+      max-height: 420px;
+      margin-bottom: 4px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #000;
+    }
+    #whaleDetailBody .whale-photo-box img { display: block; width: 100%; height: 100%; object-fit: contain; }
+    #screenWhaleDetail .btn { flex: none; }
     @keyframes screenIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
     /* Start screen: lay out greeting / glance / card with tighter rhythm */
@@ -5911,16 +5953,13 @@
     // neither exists. Contained, not cropped: the trailing edge is the whole
     // point of matching by eye, and cover would cut it.
     const photoSrc = whalePhotoCache[w.individualId] || w.photoUrl || null;
-    // Sized so the whole card lands on one screen with nothing to scroll,
-    // with the photo taking the biggest share it can afford. The box height
-    // is FIXED, not a max: the card renders at its final size immediately,
-    // so a slow-loading live URL fills in without shoving everything below
-    // it down the screen (the "glitch" on first open before the cache has
-    // the photo).
+    // The box is a flex child that absorbs whatever height the card has
+    // left over (see #screenWhaleDetail styles), so it is at its final size
+    // before the image arrives: a slow load fills into a black box that was
+    // already there, nothing below it moves.
     const photoBlock = photoSrc
-      ? '<div style="margin-bottom:4px;border-radius:12px;overflow:hidden;background:#000;height:min(230px, 30vh);">' +
+      ? '<div class="whale-photo-box">' +
         '<img src="' + escapeHtml(photoSrc) + '" alt="' + escapeHtml(w.name) + '" ' +
-        'style="display:block;width:100%;height:100%;object-fit:contain;" ' +
         'onerror="this.parentNode.style.display=\'none\'">' +
         '</div>' +
         '<div style="font-size:10px;color:var(--text-muted);margin:0 0 10px;">Catalogue photo from Happywhale, for matching by eye</div>'
@@ -5949,6 +5988,16 @@
         ? '<div style="margin-bottom:8px;font-size:12px;line-height:1.5;color:var(--text-muted);"><span style="letter-spacing:0.07em;text-transform:uppercase;font-size:10px;">Seen at</span><br>' + w.places.slice(0, 4).map(escapeHtml).join(' · ') + '</div>'
         : '') +
       '<a href="' + escapeHtml(w.happywhaleUrl) + '" target="_blank" rel="noopener" style="display:inline-block;font-size:11px;color:var(--text-muted);margin-bottom:10px;">Full sighting map on Happywhale (needs service)</a>';
+    // The card pins below the header, and the header's height varies with
+    // the operator logo, so measure where it actually ends on screen. The
+    // header is sticky, so its rect is already in viewport coordinates,
+    // the same coordinates position fixed uses.
+    const header = document.querySelector('.header');
+    if (header) {
+      document.documentElement.style.setProperty(
+        '--whale-card-top', Math.max(0, Math.round(header.getBoundingClientRect().bottom)) + 'px'
+      );
+    }
     showScreen('screenWhaleDetail');
   }
 

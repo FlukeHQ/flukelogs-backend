@@ -101,6 +101,10 @@ module.exports = async function handler(req, res) {
           const withMedia = (m.individual.encs || []).find(e => e && e.media && e.media.url);
           photoUrl = withMedia ? withMedia.media.url : null;
         }
+        // Relayed through our own domain: Happywhale's CDN sends no CORS
+        // headers, so a direct URL can't be cached for offline (tainted
+        // canvas) and loads slowly at sea. See api/whale-photo.js.
+        if (photoUrl) photoUrl = '/api/whale-photo?u=' + encodeURIComponent(photoUrl);
         row = {
           individualId: id,
           photoUrl,
