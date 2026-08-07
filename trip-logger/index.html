@@ -1680,7 +1680,7 @@
     </details>
 
     <button class="btn btn-primary" id="settingsSaveBtn" onclick="saveSettings()">Save Settings</button>
-    <button class="btn btn-outline" type="button" onclick="showScreen('screenStart')">Back</button>
+    <button class="btn btn-outline" type="button" onclick="goHome()">Back</button>
 
     <!-- What the app records. The same wording every crew member accepted at
          the consent gate, permanently findable afterwards: a disclosure that
@@ -1722,7 +1722,7 @@
       <div class="section-label">Past Trips</div>
       <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.5;">Record an audio note for any past trip — guests on your website can listen to it from the public sightings widget. Pick a trip.</p>
       <div id="pastTripsList"><div class="empty">Loading…</div></div>
-      <button class="btn btn-outline" type="button" onclick="showScreen('screenStart')">Back</button>
+      <button class="btn btn-outline" type="button" onclick="goHome()">Back</button>
     </div>
   </div>
 
@@ -1734,7 +1734,7 @@
       <div class="section-label">Whale Log</div>
       <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.5;">Every whale identified from your trips, newest first. Open a whale on Happywhale for its full sighting map.</p>
       <div id="whaleLogList"><div class="empty">Loading…</div></div>
-      <button class="btn btn-outline" type="button" onclick="showScreen('screenStart')">Back</button>
+      <button class="btn btn-outline" type="button" onclick="goHome()">Back</button>
     </div>
   </div>
 
@@ -1811,7 +1811,7 @@
       <div id="adminOperatorsList"><div class="empty">Loading…</div></div>
       <button class="btn btn-primary" type="button" onclick="openAdminOnboard()" style="margin-top:14px;">+ New Operator</button>
       <button class="btn btn-outline" type="button" onclick="openAdminSightings()">View All Sightings</button>
-      <button class="btn btn-outline" type="button" onclick="showScreen('screenStart')">Back</button>
+      <button class="btn btn-outline" type="button" onclick="goHome()">Back</button>
     </div>
   </div>
 
@@ -1863,7 +1863,7 @@
         </div>
       </div>
       <div id="captainSightingsTable"><div class="empty">Loading…</div></div>
-      <button class="btn btn-outline" type="button" onclick="showScreen('screenStart')" style="margin-top:14px;">Back</button>
+      <button class="btn btn-outline" type="button" onclick="goHome()" style="margin-top:14px;">Back</button>
     </div>
   </div>
 
@@ -4049,6 +4049,28 @@
         endTrip();
       }
     } catch(e) {}
+  }
+
+  /*
+    Back, to wherever the crew actually was.
+
+    Every menu screen's Back pointed at the Start Trip screen. Mid-trip
+    that is a lie, and a frightening one: Slater opened the Whale Log on a
+    live Enocean trip, tapped Back, and landed on Start Trip with a trip
+    still running behind it. Nothing had stopped, because changing screens
+    is pure view toggling and GPS and the broadcast only stop at End Trip,
+    but there is no way to know that from the outside. He closed the app to
+    get his trip back. Worse, that screen offers a Start Trip button to a
+    boat that is already out.
+
+    Mirrors what restoreTrip decides on a cold open, which is this app's
+    existing answer to the same question: running trip goes to the log,
+    ended but unlogged goes to the review, nothing running goes to start.
+  */
+  function goHome() {
+    if (trip.startTime && !trip.endTime) return showScreen('screenLog');
+    if (trip.startTime && trip.endTime) return showScreen('screenReview');
+    showScreen('screenStart');
   }
 
   function clearSavedTrip() { localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(GUESTS_KEY); }
