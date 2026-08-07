@@ -3799,9 +3799,46 @@
     */
     let stage = 'starting';
     try {
+      /*
+        Reading the session is the step most likely to fail out here, and it
+        used to fail in the ugliest possible way.
+
+        A three hour trip outlives an access token, so the log is often the
+        first thing that needs a refresh, and a refresh needs signal. The
+        old code handled only a MISSING session, which routes politely to
+        the login screen with "your trip is saved". A session read that
+        THREW, which is what a refresh does on marine signal, fell straight
+        past that into the generic catch, and the captain got a raw WebKit
+        string with no instruction in it. That is what happened on the
+        Enocean trip on 2026-08-07.
+
+        So: one retry, because a single failed request on a boat means
+        nothing, and then an answer in words. Absent session means sign in
+        again. A read that keeps throwing means the phone could not reach
+        the server, which is a "try again in a minute" and NOT a reason to
+        throw anyone out to the login screen, since signing out is how an
+        unlogged trip gets lost.
+      */
       stage = 'reading your session';
-      const { data: { session } } = await sb.auth.getSession();
-      if (!session) { sessionExpired(); throw new Error('Session expired — sign in again'); }
+      let session = null;
+      try {
+        ({ data: { session } } = await sb.auth.getSession());
+      } catch (e1) {
+        await new Promise(r => setTimeout(r, 1500));
+        try {
+          ({ data: { session } } = await sb.auth.getSession());
+        } catch (e2) {
+          const offline = new Error('Could not reach the server to check your login. Your trip is saved on this phone. Try again when you have signal.');
+          offline.friendly = true; // already a full sentence; do not dress it up
+          throw offline;
+        }
+      }
+      if (!session) {
+        sessionExpired();
+        const gone = new Error('Session expired. Sign in again, then tap Log Trip. Your trip is saved.');
+        gone.friendly = true;
+        throw gone;
+      }
       // Compute the trip's local calendar date on the device — the server
       // otherwise derives it from startTime in UTC, which rolls a morning
       // trip in a negative-UTC offset onto the wrong day.
@@ -3844,7 +3881,12 @@
       console.error('logTrip failed while ' + stage, err);
       lastLogError = { stage, name: err && err.name, message: err && err.message, at: new Date().toISOString() };
       try { localStorage.setItem('flukelogs.lastLogError', JSON.stringify(lastLogError)); } catch (e) {}
-      toast(`Could not log while ${stage}. Your trip is safe, try again. (${(err && err.message) || 'unknown'})`, 'error');
+      toast(
+        err && err.friendly
+          ? err.message
+          : `Could not log while ${stage}. Your trip is safe on this phone, try again. (${(err && err.message) || 'unknown error'})`,
+        'error',
+      );
       btn.disabled = false;
       btn.innerHTML = 'Log Trip';
     }
