@@ -221,6 +221,60 @@
     }
     #whaleDetailBody .whale-photo-box img { display: block; width: 100%; height: 100%; object-fit: contain; }
     #screenWhaleDetail .btn { flex: none; }
+
+    /*
+      The Whale Log scrolls inside its own card, the way the whale card
+      already sits: header fixed, list moving under it, Back always reachable
+      without hunting for it. The page itself no longer scrolls here, which
+      is what takes the long scrollbar off the right edge. The list keeps its
+      own scrollbar and hides it, because on a phone the finger is the
+      scrollbar and the grey rail is just noise over the ocean.
+
+      Rows carry a real edge now. They always meant to: the markup asked for
+      1px of var(--border), a variable this stylesheet has never defined, so
+      the browser threw the whole declaration away and the whales ran
+      together in one column of text.
+    */
+    #screenWhaleLog.active {
+      position: fixed;
+      top: var(--whale-card-top, 71px);
+      left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 10px 18px calc(12px + env(safe-area-inset-bottom));
+      z-index: 5;
+    }
+    #screenWhaleLog .section {
+      flex: 1;
+      min-height: 0;
+      margin-bottom: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    #whaleLogList {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      margin: 0 -4px;
+      padding: 0 4px;
+    }
+    #whaleLogList::-webkit-scrollbar { width: 0; height: 0; }
+    #screenWhaleLog .btn { flex: none; }
+    .whale-row {
+      display: block;
+      cursor: pointer;
+      border: 1px solid var(--hair-2);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      background: var(--ink-3);
+      box-shadow: var(--shadow-sm);
+      transition: border-color var(--t-fast), background var(--t-fast);
+    }
+    .whale-row:active { border-color: var(--teal); background: var(--ink-4); }
     @keyframes screenIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
     /* Start screen: lay out greeting / glance / card with tighter rhythm */
@@ -852,7 +906,7 @@
       letter-spacing: 0.04em;
       padding: 7px 12px;
       border-radius: 999px;
-      border: 1px solid var(--border);
+      border: 1px solid var(--hair);
       background: transparent;
       color: var(--text-dim);
       cursor: pointer;
@@ -1660,7 +1714,7 @@
   <div class="screen" id="screenWhaleDetail">
     <div class="section">
       <div id="whaleDetailBody"></div>
-      <button class="btn btn-outline" type="button" onclick="showScreen('screenWhaleLog')">Back to Whale Log</button>
+      <button class="btn btn-outline" type="button" onclick="backToWhaleLog()">Back to Whale Log</button>
     </div>
   </div>
 
@@ -1734,7 +1788,7 @@
     <div class="section">
       <div class="section-label">All Sightings</div>
       <div class="admin-sightings-filters" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;">
-        <select id="adminSightingsOp" onchange="clearAdminSightingsFocus(); renderAdminSightings();" style="flex:1;min-width:160px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+        <select id="adminSightingsOp" onchange="clearAdminSightingsFocus(); renderAdminSightings();" style="flex:1;min-width:160px;padding:8px 10px;border:1px solid var(--hair);border-radius:6px;background:var(--bg);color:var(--text);">
           <option value="">All operators</option>
         </select>
         <div class="admin-sightings-chips" role="tablist" style="display:flex;gap:6px;">
@@ -5837,6 +5891,8 @@
   // is worst, so the last good copy is saved on the phone and shown first;
   // a fresh fetch replaces it quietly when the network cooperates.
   let whaleLogData = [];
+  // Where the list was when a whale was opened, so Back returns there.
+  let whaleLogScrollTop = 0;
   const WHALE_LOG_CACHE = 'flukelogs.whaleLog';
 
   /*
@@ -5877,7 +5933,19 @@
     }
   }
 
+  // Both pinned whale screens hang from the header's real bottom, and the
+  // header's height moves with the operator's logo.
+  function pinBelowHeader() {
+    const header = document.querySelector('.header');
+    if (!header) return;
+    document.documentElement.style.setProperty(
+      '--whale-card-top', Math.max(0, Math.round(header.getBoundingClientRect().bottom)) + 'px'
+    );
+  }
+
   async function openWhaleLog() {
+    whaleLogScrollTop = 0; // opened fresh from the menu, so start at the top
+    pinBelowHeader();
     showScreen('screenWhaleLog');
     const list = document.getElementById('whaleLogList');
     let hadCache = false;
@@ -5944,7 +6012,7 @@
       const fact = w.fact
         ? '<div style="font-size:12.5px;font-style:italic;color:var(--text-muted);margin-top:6px;line-height:1.45;">' + escapeHtml(w.fact) + '</div>'
         : '';
-      return '<div role="button" tabindex="0" onclick="openWhaleDetail(' + i + ')" style="display:block;cursor:pointer;border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--card);">' +
+      return '<div role="button" tabindex="0" onclick="openWhaleDetail(' + i + ')" class="whale-row">' +
         '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">' +
           '<span style="font-size:16px;font-weight:700;">' + escapeHtml(w.name) + '</span>' +
           (w.catalogId && w.catalogId !== w.name ? '<span style="font-size:12px;color:var(--text-muted);">' + escapeHtml(w.catalogId) + '</span>' : '') +
@@ -6005,7 +6073,7 @@
         '<div class="summary-card" style="padding:8px 10px;"><div class="card-label">First identified</div><div class="card-value" style="font-size:16px;">' + (w.firstIdentified ? escapeHtml(w.firstIdentified.slice(0, 4)) : '?') + '</div></div>' +
         '<div class="summary-card" style="padding:8px 10px;"><div class="card-label">Last on record</div><div class="card-value" style="font-size:16px;">' + (fmtD(w.latestOnRecord) ? escapeHtml(fmtD(w.latestOnRecord)) : '?') + '</div></div>' +
       '</div>' +
-      (w.fact ? '<div style="font-size:13px;font-style:italic;line-height:1.45;color:var(--text);border-left:3px solid var(--border);padding:1px 0 1px 10px;margin-bottom:10px;">' + escapeHtml(w.fact) + '</div>' : '') +
+      (w.fact ? '<div style="font-size:13px;font-style:italic;line-height:1.45;color:var(--text);border-left:3px solid var(--hair-2);padding:1px 0 1px 10px;margin-bottom:10px;">' + escapeHtml(w.fact) + '</div>' : '') +
       (yourDates.length
         ? '<div style="margin-bottom:8px;font-size:12px;line-height:1.5;"><span style="letter-spacing:0.07em;text-transform:uppercase;color:var(--text-muted);font-size:10px;">Your sightings</span><br>' + yourDates.slice(0, 6).map(escapeHtml).join(' · ') + '</div>'
         : '') +
@@ -6013,17 +6081,26 @@
         ? '<div style="margin-bottom:8px;font-size:12px;line-height:1.5;color:var(--text-muted);"><span style="letter-spacing:0.07em;text-transform:uppercase;font-size:10px;">Seen at</span><br>' + w.places.slice(0, 4).map(escapeHtml).join(' · ') + '</div>'
         : '') +
       '<a href="' + escapeHtml(w.happywhaleUrl) + '" target="_blank" rel="noopener" style="display:inline-block;font-size:11px;color:var(--text-muted);margin-bottom:10px;">Full sighting map on Happywhale (needs service)</a>';
-    // The card pins below the header, and the header's height varies with
-    // the operator logo, so measure where it actually ends on screen. The
-    // header is sticky, so its rect is already in viewport coordinates,
-    // the same coordinates position fixed uses.
-    const header = document.querySelector('.header');
-    if (header) {
-      document.documentElement.style.setProperty(
-        '--whale-card-top', Math.max(0, Math.round(header.getBoundingClientRect().bottom)) + 'px'
-      );
-    }
+    // Where the log was when this whale was tapped. Coming back to the top
+    // of a fifty whale list after every card is a small cruelty on a boat:
+    // you were looking at whale forty, you want whale forty-one.
+    const list = document.getElementById('whaleLogList');
+    if (list) whaleLogScrollTop = list.scrollTop;
+    pinBelowHeader();
     showScreen('screenWhaleDetail');
+  }
+
+  /*
+    Back to the log, at the row you left. showScreen only toggles which
+    screen is active, so the list keeps its scroll position in the DOM; it
+    is restored explicitly anyway, because a re-render between the two (a
+    fresh fetch landing while the card was open) resets it to zero.
+  */
+  function backToWhaleLog() {
+    pinBelowHeader();
+    showScreen('screenWhaleLog');
+    const list = document.getElementById('whaleLogList');
+    if (list) list.scrollTop = whaleLogScrollTop;
   }
 
   async function openPastTrips() {
