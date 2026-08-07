@@ -5911,41 +5911,42 @@
     // neither exists. Contained, not cropped: the trailing edge is the whole
     // point of matching by eye, and cover would cut it.
     const photoSrc = whalePhotoCache[w.individualId] || w.photoUrl || null;
+    // Sized so the whole card lands on one screen with nothing to scroll:
+    // the photo takes about a quarter of the viewport and everything below
+    // it is packed tight. Matching by eye needs the trailing edge readable,
+    // not the photo huge.
     const photoBlock = photoSrc
-      ? '<div style="margin-bottom:14px;border-radius:12px;overflow:hidden;background:#000;">' +
+      ? '<div style="margin-bottom:4px;border-radius:12px;overflow:hidden;background:#000;">' +
         '<img src="' + escapeHtml(photoSrc) + '" alt="' + escapeHtml(w.name) + '" ' +
-        'style="display:block;width:100%;max-height:260px;object-fit:contain;" ' +
+        'style="display:block;width:100%;max-height:min(170px, 24vh);object-fit:contain;" ' +
         'onerror="this.parentNode.style.display=\'none\'">' +
         '</div>' +
-        '<div style="font-size:11px;color:var(--text-muted);margin:-8px 0 14px;">Catalogue photo from Happywhale, for matching by eye</div>'
+        '<div style="font-size:10px;color:var(--text-muted);margin:0 0 10px;">Catalogue photo from Happywhale, for matching by eye</div>'
       : '';
     body.innerHTML =
       '<div class="section-label">Whale Card</div>' +
       photoBlock +
-      '<div style="margin-bottom:14px;">' +
-        '<div style="font-size:26px;font-weight:800;line-height:1.15;">' + escapeHtml(w.name) + '</div>' +
+      '<div style="margin-bottom:10px;">' +
+        '<div style="font-size:22px;font-weight:800;line-height:1.15;">' + escapeHtml(w.name) + '</div>' +
         (w.catalogId && w.catalogId !== w.name
-          ? '<div style="font-size:13px;color:var(--text-muted);letter-spacing:0.06em;margin-top:3px;">' + escapeHtml(w.catalogId) + (w.species ? ' · ' + escapeHtml(w.species) : '') + '</div>'
-          : (w.species ? '<div style="font-size:13px;color:var(--text-muted);margin-top:3px;">' + escapeHtml(w.species) + '</div>' : '')) +
+          ? '<div style="font-size:12px;color:var(--text-muted);letter-spacing:0.05em;margin-top:2px;">' + escapeHtml(w.catalogId) + (w.species ? ' · ' + escapeHtml(w.species) : '') + (w.sex ? ' · ' + escapeHtml(w.sex) : '') + '</div>'
+          : '<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">' + escapeHtml([w.species, w.sex].filter(Boolean).join(' · ')) + '</div>') +
         qualifier +
-        (w.sex ? '<div style="font-size:13px;color:var(--text-muted);margin-top:2px;">Sex: ' + escapeHtml(w.sex) + '</div>' : '') +
       '</div>' +
-      '<div class="summary-grid" style="margin-bottom:14px;">' +
-        '<div class="summary-card"><div class="card-label">Seen by you</div><div class="card-value">' + w.timesSeenByUs + (w.timesSeenByUs === 1 ? ' time' : ' times') + '</div></div>' +
-        '<div class="summary-card"><div class="card-label">On record</div><div class="card-value">' + w.encountersOnRecord + '</div></div>' +
-        '<div class="summary-card"><div class="card-label">First identified</div><div class="card-value">' + (w.firstIdentified ? escapeHtml(w.firstIdentified.slice(0, 4)) : '?') + '</div></div>' +
-        '<div class="summary-card"><div class="card-label">Last on record</div><div class="card-value">' + (fmtD(w.latestOnRecord) ? escapeHtml(fmtD(w.latestOnRecord)) : '?') + '</div></div>' +
+      '<div class="summary-grid" style="margin-bottom:10px;">' +
+        '<div class="summary-card" style="padding:8px 10px;"><div class="card-label">Seen by you</div><div class="card-value" style="font-size:16px;">' + w.timesSeenByUs + (w.timesSeenByUs === 1 ? ' time' : ' times') + '</div></div>' +
+        '<div class="summary-card" style="padding:8px 10px;"><div class="card-label">On record</div><div class="card-value" style="font-size:16px;">' + w.encountersOnRecord + '</div></div>' +
+        '<div class="summary-card" style="padding:8px 10px;"><div class="card-label">First identified</div><div class="card-value" style="font-size:16px;">' + (w.firstIdentified ? escapeHtml(w.firstIdentified.slice(0, 4)) : '?') + '</div></div>' +
+        '<div class="summary-card" style="padding:8px 10px;"><div class="card-label">Last on record</div><div class="card-value" style="font-size:16px;">' + (fmtD(w.latestOnRecord) ? escapeHtml(fmtD(w.latestOnRecord)) : '?') + '</div></div>' +
       '</div>' +
-      (w.fact ? '<div style="font-size:14px;font-style:italic;line-height:1.55;color:var(--text);border-left:3px solid var(--border);padding:2px 0 2px 12px;margin-bottom:14px;">' + escapeHtml(w.fact) + '</div>' : '') +
+      (w.fact ? '<div style="font-size:13px;font-style:italic;line-height:1.45;color:var(--text);border-left:3px solid var(--border);padding:1px 0 1px 10px;margin-bottom:10px;">' + escapeHtml(w.fact) + '</div>' : '') +
       (yourDates.length
-        ? '<div style="margin-bottom:14px;"><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:5px;">Your sightings</div>' +
-          '<div style="font-size:13px;line-height:1.6;">' + yourDates.map(escapeHtml).join(' · ') + '</div></div>'
+        ? '<div style="margin-bottom:8px;font-size:12px;line-height:1.5;"><span style="letter-spacing:0.07em;text-transform:uppercase;color:var(--text-muted);font-size:10px;">Your sightings</span><br>' + yourDates.slice(0, 6).map(escapeHtml).join(' · ') + '</div>'
         : '') +
       (w.places && w.places.length
-        ? '<div style="margin-bottom:14px;"><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:5px;">Seen at</div>' +
-          '<div style="font-size:13px;line-height:1.6;color:var(--text-muted);">' + w.places.map(escapeHtml).join(' · ') + '</div></div>'
+        ? '<div style="margin-bottom:8px;font-size:12px;line-height:1.5;color:var(--text-muted);"><span style="letter-spacing:0.07em;text-transform:uppercase;font-size:10px;">Seen at</span><br>' + w.places.slice(0, 4).map(escapeHtml).join(' · ') + '</div>'
         : '') +
-      '<a href="' + escapeHtml(w.happywhaleUrl) + '" target="_blank" rel="noopener" style="display:inline-block;font-size:12px;color:var(--text-muted);margin-bottom:14px;">Full sighting map on Happywhale (needs service)</a>';
+      '<a href="' + escapeHtml(w.happywhaleUrl) + '" target="_blank" rel="noopener" style="display:inline-block;font-size:11px;color:var(--text-muted);margin-bottom:10px;">Full sighting map on Happywhale (needs service)</a>';
     showScreen('screenWhaleDetail');
   }
 
