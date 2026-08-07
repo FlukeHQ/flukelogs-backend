@@ -81,7 +81,22 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const UNDERWAY_KMH = 8;              // ~4.3 knots; these boats cruise 10 to 20
 const SPEED_SPAN_MS = 60 * 1000;     // measure speed over a minute, not a fix
 const DOCK_WINDOW_MS = 15 * 60 * 1000;   // stopped at the berth
-const DRIFT_WINDOW_MS = 45 * 60 * 1000;  // stopped anywhere else; 2x the longest whale sit
+/*
+  Stopped anywhere that is not the berth, which in practice means stopped on
+  animals. The longest sit in two weeks of recorded tracks was 21 minutes, so
+  45 looked like comfortable margin. It is the wrong thing to be tight about.
+
+  Being early here does not just take a boat off the public map: the app
+  follows the server, so the crew get yanked to the trip review screen and
+  asked to log, in the middle of a trip, while guests are watching a whale.
+  Being late costs an abandoned broadcast running a while longer, which the
+  widget already hides after ten minutes of silence and the next departure
+  closes outright.
+
+  So this window is deliberately far past any plausible encounter. Boats that
+  come home are caught by the berth rule anyway, whatever this is set to.
+*/
+const DRIFT_WINDOW_MS = 90 * 60 * 1000;
 const DOCK_RADIUS_M = 800;           // the harbour, not a berth: the estimate is ~250m coarse
 const MIN_DOCK_TRIPS = 3;            // a berth backed by less history is a guess
 const STATIONARY_RADIUS_M = 100;     // "moved again" for a parked broadcast
