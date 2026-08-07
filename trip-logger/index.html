@@ -1610,6 +1610,18 @@
     </div>
   </div>
 
+  <!-- Whale card, in the app. Tapping a whale in the log used to open
+       happywhale.com, which is slow on a good day and unreachable on the
+       water. This screen renders from data the log already carries, so it
+       opens instantly and works with no service at all; Happywhale is the
+       link at the bottom for when someone wants the full map. -->
+  <div class="screen" id="screenWhaleDetail">
+    <div class="section">
+      <div id="whaleDetailBody"></div>
+      <button class="btn btn-outline" type="button" onclick="showScreen('screenWhaleLog')">Back to Whale Log</button>
+    </div>
+  </div>
+
   <!-- Trip Audio recorder — focused on one selected date -->
   <div class="screen" id="screenTripAudio">
     <div class="section">
@@ -5753,21 +5765,49 @@
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
 
+  // The log the detail screen reads from, and the cache that makes both work
+  // with no service. The naturalist use case is precisely the moment signal
+  // is worst, so the last good copy is saved on the phone and shown first;
+  // a fresh fetch replaces it quietly when the network cooperates.
+  let whaleLogData = [];
+  const WHALE_LOG_CACHE = 'flukelogs.whaleLog';
+
   async function openWhaleLog() {
     showScreen('screenWhaleLog');
     const list = document.getElementById('whaleLogList');
-    list.innerHTML = '<div class="empty">Loading…</div>';
+    let hadCache = false;
+    try {
+      const cached = JSON.parse(localStorage.getItem(WHALE_LOG_CACHE) || 'null');
+      if (cached && Array.isArray(cached.whales) && cached.whales.length) {
+        whaleLogData = cached.whales;
+        renderWhaleLog(whaleLogData);
+        hadCache = true;
+      }
+    } catch (e) {}
+    if (!hadCache) list.innerHTML = '<div class="empty">Loading…</div>';
     try {
       const { data: { session } } = await sb.auth.getSession();
-      if (!session) return sessionExpired();
+      if (!session) { if (!hadCache) sessionExpired(); return; }
       const res = await fetch('/api/whale-log', {
         headers: { 'Authorization': `Bearer ${session.access_token}` },
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const { whales } = await res.json();
-      renderWhaleLog(whales || []);
+      whaleLogData = whales || [];
+      renderWhaleLog(whaleLogData);
+      try { localStorage.setItem(WHALE_LOG_CACHE, JSON.stringify({ at: Date.now(), whales: whaleLogData })); } catch (e) {}
     } catch (err) {
-      list.innerHTML = `<div class="empty">Could not load: ${err.message || err}</div>`;
+      // Offline with a saved copy is the designed case, not an error: the
+      // saved list stays up and says so quietly.
+      if (hadCache) {
+        const note = document.createElement('div');
+        note.className = 'empty';
+        note.style.cssText = 'font-size:11px;padding:6px 0;';
+        note.textContent = 'No connection. Showing your saved whale log.';
+        list.prepend(note);
+      } else {
+        list.innerHTML = `<div class="empty">Could not load: ${err.message || err}</div>`;
+      }
     }
   }
 
@@ -5777,7 +5817,7 @@
       list.innerHTML = '<div class="empty">No whales identified yet. They appear here after Flukesend matches a fluke photo.</div>';
       return;
     }
-    list.innerHTML = whales.map(w => {
+    list.innerHTML = whales.map((w, i) => {
       const seen = 'Seen by you ' + w.timesSeenByUs + (w.timesSeenByUs === 1 ? ' time' : ' times') +
         (w.lastSeenByUs ? ', last ' + whaleDate(w.lastSeenByUs) : '');
       const record = w.encountersOnRecord + ' sightings on record' +
@@ -5796,7 +5836,7 @@
       const fact = w.fact
         ? '<div style="font-size:12.5px;font-style:italic;color:var(--text-muted);margin-top:6px;line-height:1.45;">' + escapeHtml(w.fact) + '</div>'
         : '';
-      return '<a href="' + escapeHtml(w.happywhaleUrl) + '" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit;border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--card);">' +
+      return '<div role="button" tabindex="0" onclick="openWhaleDetail(' + i + ')" style="display:block;cursor:pointer;border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--card);">' +
         '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">' +
           '<span style="font-size:16px;font-weight:700;">' + escapeHtml(w.name) + '</span>' +
           (w.catalogId && w.catalogId !== w.name ? '<span style="font-size:12px;color:var(--text-muted);">' + escapeHtml(w.catalogId) + '</span>' : '') +
@@ -5804,8 +5844,55 @@
         qualifier + sexLine +
         '<div style="font-size:12.5px;margin-top:4px;">' + escapeHtml(seen) + ' · ' + escapeHtml(record) + '</div>' +
         places + fact +
-      '</a>';
+      '</div>';
     }).join('');
+  }
+
+  /*
+    The in-app whale card. Everything on it comes from the row already in
+    hand, so it opens instantly and works mid-bay with zero bars, which is
+    exactly when a naturalist wants it. Layout borrows the review screen's
+    summary cards so it reads like the rest of the app rather than a webpage.
+  */
+  function openWhaleDetail(i) {
+    const w = whaleLogData[i];
+    if (!w) return;
+    const body = document.getElementById('whaleDetailBody');
+    const fmtD = iso => {
+      if (!iso) return null;
+      const d = new Date(iso);
+      return isNaN(d.getTime()) ? null : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+    const qualifier = (w.fullNickname && w.nickname && w.fullNickname !== w.nickname && /calf/i.test(w.fullNickname))
+      ? '<div style="font-size:13px;color:var(--text-muted);margin-top:2px;">' + escapeHtml(w.fullNickname) + '</div>' : '';
+    const yourDates = (w.seenByUs || []).map(fmtD).filter(Boolean);
+    body.innerHTML =
+      '<div class="section-label">Whale Card</div>' +
+      '<div style="margin-bottom:14px;">' +
+        '<div style="font-size:26px;font-weight:800;line-height:1.15;">' + escapeHtml(w.name) + '</div>' +
+        (w.catalogId && w.catalogId !== w.name
+          ? '<div style="font-size:13px;color:var(--text-muted);letter-spacing:0.06em;margin-top:3px;">' + escapeHtml(w.catalogId) + (w.species ? ' · ' + escapeHtml(w.species) : '') + '</div>'
+          : (w.species ? '<div style="font-size:13px;color:var(--text-muted);margin-top:3px;">' + escapeHtml(w.species) + '</div>' : '')) +
+        qualifier +
+        (w.sex ? '<div style="font-size:13px;color:var(--text-muted);margin-top:2px;">Sex: ' + escapeHtml(w.sex) + '</div>' : '') +
+      '</div>' +
+      '<div class="summary-grid" style="margin-bottom:14px;">' +
+        '<div class="summary-card"><div class="card-label">Seen by you</div><div class="card-value">' + w.timesSeenByUs + (w.timesSeenByUs === 1 ? ' time' : ' times') + '</div></div>' +
+        '<div class="summary-card"><div class="card-label">On record</div><div class="card-value">' + w.encountersOnRecord + '</div></div>' +
+        '<div class="summary-card"><div class="card-label">First identified</div><div class="card-value">' + (w.firstIdentified ? escapeHtml(w.firstIdentified.slice(0, 4)) : '?') + '</div></div>' +
+        '<div class="summary-card"><div class="card-label">Last on record</div><div class="card-value">' + (fmtD(w.latestOnRecord) ? escapeHtml(fmtD(w.latestOnRecord)) : '?') + '</div></div>' +
+      '</div>' +
+      (w.fact ? '<div style="font-size:14px;font-style:italic;line-height:1.55;color:var(--text);border-left:3px solid var(--border);padding:2px 0 2px 12px;margin-bottom:14px;">' + escapeHtml(w.fact) + '</div>' : '') +
+      (yourDates.length
+        ? '<div style="margin-bottom:14px;"><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:5px;">Your sightings</div>' +
+          '<div style="font-size:13px;line-height:1.6;">' + yourDates.map(escapeHtml).join(' · ') + '</div></div>'
+        : '') +
+      (w.places && w.places.length
+        ? '<div style="margin-bottom:14px;"><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:5px;">Seen at</div>' +
+          '<div style="font-size:13px;line-height:1.6;color:var(--text-muted);">' + w.places.map(escapeHtml).join(' · ') + '</div></div>'
+        : '') +
+      '<a href="' + escapeHtml(w.happywhaleUrl) + '" target="_blank" rel="noopener" style="display:inline-block;font-size:12px;color:var(--text-muted);margin-bottom:14px;">Full sighting map on Happywhale (needs service)</a>';
+    showScreen('screenWhaleDetail');
   }
 
   async function openPastTrips() {
