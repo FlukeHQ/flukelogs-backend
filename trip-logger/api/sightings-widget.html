@@ -1574,6 +1574,26 @@ function renderNowBanner(data) {
 const LIVE_POLL_MS = 60000;
 let liveBoatMarkers = [];
 let liveTrackLines = [];
+
+// Chaikin corner cutting: each pass replaces every corner with two points a
+// quarter of the way along its adjoining segments, which converges on a
+// smooth curve through the polyline's shape. Endpoints are preserved so the
+// track still starts where the trip did and ends at the boat.
+function chaikin(points, iterations) {
+  let pts = points;
+  for (let it = 0; it < iterations; it++) {
+    if (pts.length < 3) return pts;
+    const out = [pts[0]];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [ay, ax] = pts[i], [by, bx] = pts[i + 1];
+      out.push([ay * 0.75 + by * 0.25, ax * 0.75 + bx * 0.25]);
+      out.push([ay * 0.25 + by * 0.75, ax * 0.25 + bx * 0.75]);
+    }
+    out.push(pts[pts.length - 1]);
+    pts = out;
+  }
+  return pts;
+}
 let liveSightingMarkers = [];
 // While broadcasting, refreshMarkers() suppresses past-trip pins unless the
 // visitor explicitly selects a trip or species.
@@ -1712,7 +1732,21 @@ function renderLive(live) {
       m.addTo(map);
       liveSightingMarkers.push(m);
     });
-    const pts = (boat.track || []).map(p => [+p.lat, +p.lng]);
+    /*
+      The live track's stair-steps are the privacy fuzz showing: positions are
+      rounded to a coarse grid before they ever leave the server, so the line
+      connects kilometre-spaced grid points with straight segments and reads
+      as jagged next to the smooth playback line, which draws exact GPS from
+      a finished trip by design.
+
+      The rounding stays exactly as it is; only the drawing changes. Chaikin
+      corner-cutting rounds the rendered line through the same coarse points,
+      so it looks like a boat's wake instead of a staircase while revealing
+      nothing the grid points did not already say. The curve is decoration
+      between public points, not position data, and the endpoints are kept so
+      the line still meets the boat dot.
+    */
+    const pts = chaikin((boat.track || []).map(p => [+p.lat, +p.lng]), 3);
     if (pts.length > 1) {
       liveTrackLines.push(L.polyline(pts, {
         color, weight: 2.5, opacity: 0.8, dashArray: '4 6', interactive: false,
