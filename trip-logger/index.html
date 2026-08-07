@@ -5911,14 +5911,16 @@
     // neither exists. Contained, not cropped: the trailing edge is the whole
     // point of matching by eye, and cover would cut it.
     const photoSrc = whalePhotoCache[w.individualId] || w.photoUrl || null;
-    // Sized so the whole card lands on one screen with nothing to scroll:
-    // the photo takes about a quarter of the viewport and everything below
-    // it is packed tight. Matching by eye needs the trailing edge readable,
-    // not the photo huge.
+    // Sized so the whole card lands on one screen with nothing to scroll,
+    // with the photo taking the biggest share it can afford. The box height
+    // is FIXED, not a max: the card renders at its final size immediately,
+    // so a slow-loading live URL fills in without shoving everything below
+    // it down the screen (the "glitch" on first open before the cache has
+    // the photo).
     const photoBlock = photoSrc
-      ? '<div style="margin-bottom:4px;border-radius:12px;overflow:hidden;background:#000;">' +
+      ? '<div style="margin-bottom:4px;border-radius:12px;overflow:hidden;background:#000;height:min(230px, 30vh);">' +
         '<img src="' + escapeHtml(photoSrc) + '" alt="' + escapeHtml(w.name) + '" ' +
-        'style="display:block;width:100%;max-height:min(170px, 24vh);object-fit:contain;" ' +
+        'style="display:block;width:100%;height:100%;object-fit:contain;" ' +
         'onerror="this.parentNode.style.display=\'none\'">' +
         '</div>' +
         '<div style="font-size:10px;color:var(--text-muted);margin:0 0 10px;">Catalogue photo from Happywhale, for matching by eye</div>'
