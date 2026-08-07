@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#000000">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/Public/flukelogs-icon-512.png">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Flukelogs</title>
   <!-- Brand typeface — matches enoceantours.com -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -158,6 +158,7 @@
     .header {
       position: sticky;
       top: 0;
+      padding-top: max(14px, env(safe-area-inset-top));
       /* Above Leaflet's in-map panes/controls (which reach z-index 1000) —
          the dropdown menu lives INSIDE this stacking context, so the header
          itself must outrank the map or the menu paints behind it. */
@@ -1368,9 +1369,6 @@
 <div class="app">
 
   <header class="header">
-    <button class="iconbtn btn-refresh" id="btnRefresh" type="button" onclick="fetchBuoyConditions(true)" aria-label="Refresh conditions">
-      <svg viewBox="0 0 24 24"><path d="M20 11A8 8 0 1 1 6.3 6.3M20 4v7h-7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
     <div class="header-logo">
       <!-- Product brand (Flukelogs) when logged out; swapped to the operator's
            light-on-dark logo (or their name as text) by applyHeaderBrand(). -->
@@ -1464,25 +1462,14 @@
       <!-- Per-operator harbor/tagline — populated by applyOperatorChrome();
            stays hidden until the logged-in operator has one set. -->
       <div class="kicker" id="startKicker" hidden></div>
-      <h1>Ready when you are, Captain</h1>
+      <h1 id="startGreeting">Ready when you are, Captain</h1>
       <div class="meta" id="startMeta">&nbsp;</div>
     </section>
 
-    <section class="glance">
-      <div class="tile">
-        <div class="lbl">Sea Temp</div>
-        <div class="val placeholder" id="glanceTemp">—<small>°F</small></div>
-      </div>
-      <div class="tile">
-        <div class="lbl">Wind</div>
-        <div class="val placeholder" id="glanceWind">—<small>kt</small></div>
-      </div>
-    </section>
 
     <section class="section" id="trip-card">
       <div class="section-head">
         <h2>New Trip</h2>
-        <span class="pill"><span class="dot"></span>Live Conditions</span>
       </div>
 
       <div class="field" id="bookingSlotField" style="display:none;">
@@ -1520,34 +1507,6 @@
           <button type="button" id="paxInc" aria-label="Increase">+</button>
         </div>
         <input type="hidden" id="inputPassengers" value="4">
-      </div>
-
-      <div class="field">
-        <label>Water Temperature (°F)</label>
-        <input type="number" id="inputWaterTemp" placeholder="e.g. 55" step="0.1" inputmode="decimal">
-      </div>
-
-      <div class="field">
-        <label>Visibility</label>
-        <div class="seg" id="visSeg" data-target="inputVisibility">
-          <button type="button" data-value="Excellent">Excellent</button>
-          <button type="button" data-value="Good" class="on">Good</button>
-          <button type="button" data-value="Fair">Fair</button>
-          <button type="button" data-value="Poor">Poor</button>
-          <button type="button" data-value="Overcast">Overcast</button>
-        </div>
-        <input type="hidden" id="inputVisibility" value="Good">
-      </div>
-
-      <div class="field">
-        <label>Sea Conditions</label>
-        <div class="seg" id="seaSeg" data-target="inputConditions">
-          <button type="button" data-value="Calm">Calm</button>
-          <button type="button" data-value="Slight Chop">Slight</button>
-          <button type="button" data-value="Moderate Chop">Moderate</button>
-          <button type="button" data-value="Rough">Rough</button>
-        </div>
-        <input type="hidden" id="inputConditions" value="">
       </div>
 
       <button class="btn btn-primary" onclick="startTrip()">
@@ -2246,10 +2205,6 @@
   function showScreen(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById(id).classList.add('active');
-    // Header refresh button is only meaningful on the start screen, where
-    // it re-pulls buoy conditions. Hide it everywhere else.
-    const refreshBtn = document.getElementById('btnRefresh');
-    if (refreshBtn) refreshBtn.classList.toggle('show', id === 'screenStart');
     window.scrollTo(0, 0);
   }
 
@@ -2387,218 +2342,6 @@
   });
 
   // ── NOAA buoy auto-fill (silent) ───────────────────────────────────
-  // Pulls latest observation from /api/buoy-conditions (default: 46092,
-  // MBARI M1 in the middle of central Monterey Bay) and quietly populates
-  // the Water Temp + Sea Conditions fields. No banner — the captain just
-  // sees the form pre-filled.
-  //
-  // Runs once on DOMContentLoaded and again every time the captain taps
-  // the ↻ refresh button in the header. On manual refresh (force=true)
-  // we overwrite any existing values and toast the new readings; on the
-  // initial auto-fetch we never overwrite captain edits and stay silent
-  // on errors so an offline app launch isn't loud.
-  //
-  // Visibility isn't touched — M1 has no visibility sensor and the form
-  // already defaults to "Good".
-  async function fetchBuoyConditions(force) {
-    const btn = document.getElementById('btnRefresh');
-    if (force && btn) btn.classList.add('spinning');
-    try {
-      // Use the operator's preferred buoy if /api/me has loaded one,
-      // otherwise let the endpoint default (currently 46092).
-      const station = operatorConfig && operatorConfig.noaa_buoy_station;
-      const url = '/api/buoy-conditions' + (station ? `?station=${encodeURIComponent(station)}` : '');
-      const res = await fetch(url, { cache: force ? 'reload' : 'default' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const obs = await res.json();
-      if (obs.error) throw new Error(obs.error);
-
-      const tempInput = document.getElementById('inputWaterTemp');
-      const seaHidden = document.getElementById('inputConditions');
-      if (obs.water_temp_f != null && (!tempInput.value || force)) {
-        tempInput.value = obs.water_temp_f;
-      }
-      if (obs.sea_state && (!seaHidden.value || force)) {
-        seaHidden.value = obs.sea_state;
-        // Sync the segmented control's visual state to the new value
-        const seaSeg = document.getElementById('seaSeg');
-        if (seaSeg) {
-          seaSeg.querySelectorAll('button').forEach(b => {
-            b.classList.toggle('on', (b.dataset.value || b.textContent.trim()) === obs.sea_state);
-          });
-        }
-      }
-
-      // Glance tiles — always update when buoy responds
-      paintGlance(obs);
-
-      if (force) {
-        const parts = [];
-        if (obs.water_temp_f != null) parts.push(`${obs.water_temp_f}°F`);
-        if (obs.sea_state)            parts.push(obs.sea_state);
-        toast(`Conditions updated · ${parts.join(' · ') || 'no data'}`, 'success');
-      }
-    } catch (err) {
-      if (force) toast(`Couldn't reach NOAA buoy`, 'error');
-      // Silent on initial auto-fetch — captain just types manually
-    } finally {
-      if (force && btn) setTimeout(() => btn.classList.remove('spinning'), 400);
-    }
-  }
-
-  // ── FareHarbor bookings pre-fill (silent) ─────────────────────────
-  // Fetches today's bookings for this operator from /api/operator/bookings
-  // and renders a slot picker above the passenger count. One slot →
-  // auto-select. Two or more → tappable radio cards. Selecting a slot
-  // sets the passenger count to the booked total and stages the booker
-  // emails as guest rows (deduped) so they're pre-loaded
-  // when the captain reaches the trip-end review screen. The captain can
-  // still adjust everything manually.
-  //
-  // Failures are silent — the captain shouldn't see noise if FH or the
-  // network is flaky. The form just stays empty and they fill it in.
-  function todayLocalDate() {
-    // YYYY-MM-DD in the device's local timezone. Matches how the webhook
-    // handler derives trip_date from FH's offset-tagged start_at.
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${dd}`;
-  }
-  function fmtSlotTime(startAt) {
-    if (!startAt) return '';
-    const d = new Date(startAt);
-    if (isNaN(d.getTime())) return '';
-    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  }
-
-  async function fetchTodayBookings(token) {
-    if (!token) return;
-    try {
-      const tripDate = todayLocalDate();
-      const res = await fetch(`/api/operator/bookings?trip_date=${tripDate}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (!res.ok) return;
-      const body = await res.json();
-      renderBookingSlots(body.slots || []);
-    } catch (e) {
-      // Silent — captain just fills the form manually
-    }
-  }
-
-  function renderBookingSlots(slots) {
-    const field = document.getElementById('bookingSlotField');
-    const wrap = document.getElementById('bookingSlotPicker');
-    if (!field || !wrap) return;
-    wrap.innerHTML = '';
-
-    // Drop slots whose trip is already over. The captain is starting a new
-    // trip, so a slot that ended hours ago is not what they're about to run —
-    // auto-selecting it would prefill the wrong passenger count and emails.
-    // Fall back to start_at if end_at is missing so we still hide stale rows.
-    const nowMs = Date.now();
-    slots = slots.filter(s => {
-      const endMs = s.end_at ? Date.parse(s.end_at) : NaN;
-      if (!isNaN(endMs)) return endMs >= nowMs;
-      const startMs = s.start_at ? Date.parse(s.start_at) : NaN;
-      if (!isNaN(startMs)) return startMs >= nowMs;
-      return true;
-    });
-
-    if (!slots.length) {
-      field.style.display = 'none';
-      return;
-    }
-    field.style.display = '';
-
-    slots.forEach((slot, i) => {
-      const card = document.createElement('div');
-      card.className = 'booking-slot' + (slots.length === 1 ? ' readonly' : '');
-      const time = fmtSlotTime(slot.start_at);
-      const item = slot.item_name ? ` · ${slot.item_name}` : '';
-      const pax = slot.customer_count;
-      const bookings = slot.booking_count;
-      const sub = `${bookings} booking${bookings === 1 ? '' : 's'}`;
-      card.innerHTML = `
-        <div>
-          <div class="slot-time">${time}${item}</div>
-          <div class="slot-sub">${sub}</div>
-        </div>
-        <div class="slot-count">${pax} ${pax === 1 ? 'guest' : 'guests'}</div>
-      `;
-      if (slots.length > 1) {
-        card.addEventListener('click', () => {
-          wrap.querySelectorAll('.booking-slot').forEach(el => el.classList.remove('on'));
-          card.classList.add('on');
-          applyBookingSlot(slot);
-        });
-      }
-      wrap.appendChild(card);
-    });
-
-    // Auto-apply if there's only one slot. Otherwise the captain picks.
-    if (slots.length === 1) applyBookingSlot(slots[0]);
-  }
-
-  function applyBookingSlot(slot) {
-    // Set passenger count (the stepper's setPax is scoped inside
-    // DOMContentLoaded, so we drive the hidden input + UI directly here)
-    const PAX_MAX = 6;
-    const n = Math.max(0, Math.min(PAX_MAX, slot.customer_count | 0));
-    const paxHidden = document.getElementById('inputPassengers');
-    const paxValEl = document.getElementById('paxVal');
-    const paxLblEl = document.getElementById('paxLabel');
-    if (paxHidden) paxHidden.value = String(n);
-    if (paxValEl) paxValEl.textContent = n;
-    if (paxLblEl) paxLblEl.textContent = n === 1 ? 'of 6 guests' : `of ${PAX_MAX} guests`;
-    const dec = document.getElementById('paxDec');
-    const inc = document.getElementById('paxInc');
-    if (dec) dec.disabled = n <= 0;
-    if (inc) inc.disabled = n >= PAX_MAX;
-
-    // Stage booker emails (deduped) as guest rows — visible when the captain
-    // reaches the send screen; each booker can then get their own photo.
-    for (const email of (slot.booker_emails || [])) {
-      if (email && !guestGroups.some(g => g.email === email)) {
-        // Fill the initial blank row first, then append.
-        const blank = guestGroups.find(g => !g.email && !g.photoData);
-        if (blank) blank.email = email;
-        else guestGroups.push({ email, photoData: null });
-      }
-    }
-    renderGuestRows();
-  }
-
-  // Updates the Sea Temp / Wind tiles on the start screen with the latest
-  // buoy reading. Swell was removed because M1 (Enocean's default station)
-  // has no wave sensors — the tile sat permanently muted.
-  function paintGlance(obs) {
-    function set(id, value, unit) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      if (value == null || value === '') {
-        el.classList.add('placeholder');
-        el.innerHTML = `—<small>${unit}</small>`;
-      } else {
-        el.classList.remove('placeholder');
-        el.innerHTML = `${value}<small>${unit}</small>`;
-      }
-    }
-    set('glanceTemp',  obs && obs.water_temp_f,   '°F');
-    if (obs && obs.wind_kt != null) {
-      const dir = (obs.wind_dir_deg != null) ? ' ' + degToCompass(obs.wind_dir_deg) : '';
-      const el = document.getElementById('glanceWind');
-      if (el) { el.classList.remove('placeholder'); el.innerHTML = `${obs.wind_kt}<small>kt${dir}</small>`; }
-    } else {
-      set('glanceWind', null, 'kt');
-    }
-  }
-  function degToCompass(deg) {
-    const dirs = ['N','NE','E','SE','S','SW','W','NW'];
-    return dirs[Math.round(((deg % 360) / 45)) % 8];
-  }
 
   // ── Trip functions ───────────────────────────────────────────
   // ── Roster pickers: boat, departure, crew ──────────────────────────
@@ -2788,9 +2531,6 @@
       localStorage.setItem(LAST_CREW_KEY, JSON.stringify(selCrew));
     } catch (e) {}
     trip.passengers = parseInt(passengers);
-    trip.waterTemp = document.getElementById('inputWaterTemp').value;
-    trip.visibility = document.getElementById('inputVisibility').value;
-    trip.conditions = document.getElementById('inputConditions').value;
     trip.liveId = liveId;
     // The trip's logbook identity, minted once here and kept for life. The
     // server used to mint one per submission, which made every replay a new
@@ -3866,7 +3606,21 @@
         body: JSON.stringify({ tripData: trip, tripDate, mode: 'log-only', logTripId: trip.logId }),
       });
       stage = 'reading the reply';
-      if (!res.ok) throw new Error(`Server said ${res.status}`);
+      if (!res.ok) {
+        /*
+          A 5xx is our fault, not the phone's, and saying so matters. On
+          2026-08-07 a captain met a bare server error with no way to know
+          whether to restart, sign in again, or keep tapping. Restarting
+          would not have helped: the bug was in this endpoint. So the message
+          names whose problem it is and what is safe to do, and deliberately
+          does not suggest troubleshooting that cannot work.
+        */
+        const server = new Error(res.status >= 500
+          ? 'The server had a problem saving this trip. That is on our end, not your phone, and restarting will not help. Your trip is safe here. Try again in a few minutes.'
+          : `The server refused the trip (${res.status}). Your trip is safe on this phone.`);
+        server.friendly = true;
+        throw server;
+      }
       const result = await res.json();
       if (!result.success) throw new Error(result.error || 'Failed to log trip');
       stage = 'saving the result';
@@ -4379,7 +4133,6 @@
       openWelcome();
     } else {
       showScreen('screenStart');
-      fetchBuoyConditions(false);
       fetchTodayBookings(session.access_token);
     }
   }
@@ -4406,6 +4159,20 @@
   // haven't uploaded one) and the trip-screen kicker shows THEIR harbor/
   // tagline. Called from loadMe(), saveSettings() (hot-reload), and the
   // logged-out paths (boot + logout) so the chrome always matches the session.
+  /*
+    Greet whoever is holding the phone.
+
+    Their crew row carries the name the operator already uses on every trip
+    sheet, and /api/me hands back the first word of it. Six of sixteen
+    accounts have one; the rest keep "Captain", which is what this line has
+    always said. Escaped like any other name from the database.
+  */
+  function applyGreeting(name) {
+    const el = document.getElementById('startGreeting');
+    if (!el) return;
+    el.textContent = 'Ready when you are, ' + (name || 'Captain');
+  }
+
   function applyOperatorChrome() {
     const img = document.getElementById('headerLogoImg');
     const txt = document.getElementById('headerLogoText');
@@ -4558,6 +4325,7 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const body = await res.json();
       operatorConfig = body.operator || null;
+      applyGreeting(body.user && body.user.display_name);
       operatorRoster = (body.roster && typeof body.roster === 'object')
         ? { boats: body.roster.boats || [], crew: body.roster.crew || [], trip_times: body.roster.trip_times || [] }
         : { boats: [], crew: [], trip_times: [] };

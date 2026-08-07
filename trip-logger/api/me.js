@@ -34,7 +34,7 @@ async function getRoster(operatorId) {
   };
   const [boats, crew, branding] = await Promise.all([
     get(`boats?operator_id=eq.${operatorId}&select=id,name&order=sort_order.asc`),
-    get(`crew_members?operator_id=eq.${operatorId}&select=id,name,roles&order=sort_order.asc`),
+    get(`crew_members?operator_id=eq.${operatorId}&select=id,name,roles,user_id&order=sort_order.asc`),
     get(`branding?operator_id=eq.${operatorId}&select=trip_times&limit=1`),
   ]);
   return {
@@ -65,11 +65,25 @@ module.exports = async function handler(req, res) {
     hasConsented(user.id),
   ]);
 
+  /*
+    What to call this person. Their crew row carries the name the operator
+    already types on every trip sheet, so a naturalist who is on the roster
+    gets greeted by it. Six of sixteen accounts have one today; everyone else
+    keeps "Captain", which is what the screen has always said and reads fine.
+    First word only: rosters hold "Kailey" and occasionally "Kailey Parker",
+    and a greeting wants the short one.
+  */
+  const me = (roster.crew || []).find(c => c.user_id === user.id);
+  const displayName = me && typeof me.name === 'string' && me.name.trim()
+    ? me.name.trim().split(/\s+/)[0].slice(0, 24)
+    : null;
+
   return res.status(200).json({
     user: {
       id:    user.id,
       email: user.email,
       is_super_admin: isSuperAdmin,
+      display_name: displayName,
     },
     operator: publicOperatorView(operator),
     roster,
