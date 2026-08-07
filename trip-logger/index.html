@@ -74,11 +74,26 @@
     }
     body { overscroll-behavior-y: contain; overflow-x: hidden; }
 
+    /*
+      --app-h is the REAL visible height, measured in JS from
+      window.visualViewport and refreshed whenever the webview changes its
+      mind. The fallback keeps today's behaviour anywhere the script has not
+      run yet or the API is missing.
+
+      This exists because three separate things in this file each believed
+      they knew the height: body at 100%, this shell at 100dvh, and the two
+      pinned whale screens at bottom:0. In a browser those agree. In the
+      shipped webview, with contentInset automatic, they do not, and they
+      update at different moments, which is why every screen showed a
+      different gap and why touching the screen made it snap. The touch was
+      not fixing anything; it was generating the scroll event that finally
+      made the webview recompute.
+    */
     .app {
       position: relative;
       max-width: 560px;
       margin: 0 auto;
-      min-height: 100dvh;
+      min-height: var(--app-h, 100dvh);
       display: flex;
       flex-direction: column;
       background: transparent;
@@ -227,7 +242,8 @@
     #screenWhaleDetail.active {
       position: fixed;
       top: var(--whale-card-top, 71px);
-      left: 0; right: 0; bottom: 0;
+      left: 0; right: 0;
+      height: calc(var(--app-h, 100dvh) - var(--whale-card-top, 71px));
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -271,7 +287,8 @@
     #screenWhaleLog.active {
       position: fixed;
       top: var(--whale-card-top, 71px);
-      left: 0; right: 0; bottom: 0;
+      left: 0; right: 0;
+      height: calc(var(--app-h, 100dvh) - var(--whale-card-top, 71px));
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -2860,11 +2877,36 @@
     visible seam; this is what gets the layout honest again a moment sooner.
     Both are cheap and neither can fail loudly.
   */
+  /*
+    Measure the screen instead of trusting it.
+
+    window.visualViewport reports the area actually visible to the person
+    holding the phone, which is the one number in this webview that is never
+    wrong, and it fires an event the moment that area changes. Everything
+    that needs a height now reads --app-h, so the shell, the fifteen screens
+    inside it and the two pinned whale screens all resolve from the same
+    measurement at the same instant.
+
+    The events matter as much as the number. Waking from the lock screen,
+    rotating, dismissing the keyboard, and the webview settling after launch
+    all change the visible area, and the visualViewport listeners fire on
+    each. That is what a finger was doing: generating a scroll that made the
+    webview recompute. Now the app hears it directly.
+
+    Falls back to innerHeight where visualViewport is missing, and to the
+    CSS default if the script never runs, so nothing depends on it working.
+  */
   function remeasureViewport() {
     try {
+      const vv = window.visualViewport;
+      const h = Math.round((vv && vv.height) || window.innerHeight || 0);
+      if (h > 0) document.documentElement.style.setProperty('--app-h', h + 'px');
       pinBelowHeader();
-      void document.body.offsetHeight; // forces the reflow a touch would
     } catch (e) {}
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', remeasureViewport);
+    window.visualViewport.addEventListener('scroll', remeasureViewport);
   }
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') remeasureViewport();
@@ -2872,6 +2914,14 @@
   window.addEventListener('pageshow', remeasureViewport);
   window.addEventListener('orientationchange', () => setTimeout(remeasureViewport, 150));
   window.addEventListener('resize', remeasureViewport);
+  // Launch is the worst case: the webview settles its insets over the first
+  // moments, so measure immediately and again as it does.
+  remeasureViewport();
+  document.addEventListener('DOMContentLoaded', remeasureViewport);
+  window.addEventListener('load', () => {
+    remeasureViewport();
+    [100, 300, 600, 1200].forEach(ms => setTimeout(remeasureViewport, ms));
+  });
 
   function logSighting() {
     const species = document.getElementById('inputSpecies').value;
