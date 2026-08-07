@@ -300,13 +300,20 @@
       cursor: pointer;
       border: 1px solid var(--hair-2);
       border-radius: 12px;
-      padding: 12px 14px;
+      padding: 0 0 12px;
       margin-bottom: 10px;
       background: var(--ink-3);
       box-shadow: var(--shadow-sm);
+      overflow: hidden;
       transition: border-color var(--t-fast), background var(--t-fast);
     }
     .whale-row:active { border-color: var(--teal); background: var(--ink-4); }
+    .whale-row .whale-thumb { width: 100%; height: 150px; background: #000; margin-bottom: 10px; }
+    .whale-row .whale-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .whale-row .whale-row-text { padding: 0 14px; }
+    /* No photograph of this animal: no empty frame either. */
+    .whale-row.no-photo { padding: 12px 0; }
+    .whale-row.no-photo .whale-thumb { display: none; }
     @keyframes screenIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
     /* Start screen: lay out greeting / glance / card with tighter rhythm */
@@ -6083,9 +6090,10 @@
   async function cacheWhalePhotos(whales) {
     let changed = false;
     for (const w of whales.slice(0, 30)) {
-      if (!w.photoUrl || whalePhotoCache[w.individualId]) continue;
+      const source = w.ourPhotoUrl || w.photoUrl;
+      if (!source || whalePhotoCache[w.individualId]) continue;
       try {
-        const res = await fetch(w.photoUrl, { mode: 'cors' });
+        const res = await fetch(source, { mode: 'cors' });
         if (!res.ok) continue;
         const bmp = await createImageBitmap(await res.blob());
         const scale = Math.min(1, 500 / Math.max(bmp.width, bmp.height));
@@ -6176,20 +6184,39 @@
       const qualifier = (w.fullNickname && w.nickname && w.fullNickname !== w.nickname && /calf/i.test(w.fullNickname))
         ? '<div style="font-size:12px;color:var(--text-muted);">' + escapeHtml(w.fullNickname) + '</div>'
         : '';
-      const places = w.places && w.places.length
-        ? '<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">Seen at: ' + escapeHtml(w.places.join(', ')) + '</div>'
+      /*
+        A row is a fluke, a name, and one line of numbers.
+
+        Names do not work here. Most of these animals are called CRC-23806,
+        and a naturalist cannot hold twenty of those in their head, but they
+        know a fluke on sight. So the photograph leads and everything else
+        (where it has been, the fact line, sex, the calf line) waits on the
+        card a tap away. The list is for finding the whale; the card is for
+        knowing it.
+
+        The photo is OUR most recent frame of this animal when we have one,
+        because a whale identified as a calf two years ago does not look like
+        the animal on the water today. The catalogue avatar is the fallback
+        for whales we have never photographed ourselves.
+
+        A whale with no photograph at all gets no empty tile, just its name
+        and numbers, so a gap reads as a different kind of row rather than a
+        broken one.
+      */
+      const shot = whalePhotoCache[w.individualId] || w.ourPhotoUrl || w.photoUrl || null;
+      const thumb = shot
+        ? '<div class="whale-thumb"><img src="' + escapeHtml(shot) + '" alt="" ' +
+          'onerror="this.parentNode.parentNode.classList.add(\'no-photo\')"></div>'
         : '';
-      const fact = w.fact
-        ? '<div style="font-size:12.5px;font-style:italic;color:var(--text-muted);margin-top:6px;line-height:1.45;">' + escapeHtml(w.fact) + '</div>'
-        : '';
-      return '<div role="button" tabindex="0" onclick="openWhaleDetail(' + i + ')" class="whale-row">' +
+      return '<div role="button" tabindex="0" onclick="openWhaleDetail(' + i + ')" class="whale-row' + (shot ? '' : ' no-photo') + '">' +
+        thumb +
+        '<div class="whale-row-text">' +
         '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">' +
           '<span style="font-size:16px;font-weight:700;">' + escapeHtml(w.name) + '</span>' +
           (w.catalogId && w.catalogId !== w.name ? '<span style="font-size:12px;color:var(--text-muted);">' + escapeHtml(w.catalogId) + '</span>' : '') +
         '</div>' +
-        qualifier + sexLine +
         '<div style="font-size:12.5px;margin-top:4px;">' + escapeHtml(seen) + ' · ' + escapeHtml(record) + '</div>' +
-        places + fact +
+        '</div>' +
       '</div>';
     }).join('');
   }
