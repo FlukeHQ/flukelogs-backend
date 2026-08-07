@@ -24,6 +24,231 @@ const TRACK_CAP = 720;            // hard row-size backstop
 const TRACK_MIN_SPACING_MS = 20000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/*
+  The parked-boat rule: a broadcast that stops sailing stops broadcasting.
+
+  Every other safety net here triggers on silence. A phone that dies, loses
+  signal or gets force quit stops beating and the widget calls the broadcast
+  over ten minutes later. None of that helps against the opposite failure,
+  which is the common one: the boat ties up, nobody taps End Trip, and the
+  phone in someone's pocket keeps beating happily from the wharf. Princess
+  docked at 9:09 PM on 2026-08-06 and was still publishing "on the water
+  since 7:04 PM" at 9:20, and would have kept it up all night. Worse, an open
+  broadcast blocks the next start on that boat, so the morning departure
+  would have been locked out by last night's phone.
+
+  The rule Slater asked for was 100 metres for 15 minutes. Replaying it over
+  two weeks of real tracks showed why that alone is not enough, twice over.
+
+  First, tonight's phone sat at the dock for thirteen minutes and forty
+  seconds and then set off again at six kilometres an hour, because a person
+  picked it up and walked to their car. Every step reset the stationary
+  window. The vessel had been finished for a quarter of an hour. So the test
+  is not "has it stopped" but "is it still under way": speed measured over a
+  minute rather than fix to fix, since GPS jitter at a dock can fake a
+  sprint, and anything under UNDERWAY_KMH is not a boat working. It is a boat
+  tied up, or a phone in a pocket.
+
+  Second, and this is the one that would have cost us a live map in the
+  middle of the best encounter of somebody's day: stillness cannot tell a
+  dock from a whale. Boats hold station on animals for up to twenty one
+  minutes in the recorded data, and hold tighter doing it than they do at the
+  wharf (a five minute spread of 67 metres on whales against 20 metres tied
+  up). Speed-only firing closed three real trips 16 to 23 km offshore. What
+  does separate them is where: every dock stop sat 100 to 200 metres from the
+  wharf. So the boat's own berth, learned from its arrivals by the
+  operator_dock function, is part of the test.
+
+  Hence two ways to close. At the dock, fifteen minutes stopped is enough,
+  which is the rule as asked for. Anywhere else it takes DRIFT_WINDOW, well
+  past the longest whale sit ever recorded here, so an operator with no
+  learned dock yet still gets an end rather than an all-night broadcast.
+
+  Three further guards keep it off a boat that is still working.
+
+  It only applies after the boat has left. Crews board passengers for ten or
+  fifteen minutes with the trip already started, sitting still at the dock,
+  which is this exact signature. A broadcast that has never been more than
+  DEPARTED_M from its first fix is still at the dock, not home from sea.
+
+  It needs a populated window, not a quiet one. Fewer than MIN_WINDOW_POINTS
+  fixes since the boat stopped means the phone was asleep or out of signal,
+  and a gap is not evidence of anything. Silence is the other net's job.
+
+  It defers to the animals. A sighting or a status posted inside the window
+  means the crew is working, and the rule stands down.
+*/
+const UNDERWAY_KMH = 8;              // ~4.3 knots; these boats cruise 10 to 20
+const SPEED_SPAN_MS = 60 * 1000;     // measure speed over a minute, not a fix
+const DOCK_WINDOW_MS = 15 * 60 * 1000;   // stopped at the berth
+const DRIFT_WINDOW_MS = 45 * 60 * 1000;  // stopped anywhere else; 2x the longest whale sit
+const DOCK_RADIUS_M = 800;           // the harbour, not a berth: the estimate is ~250m coarse
+const MIN_DOCK_TRIPS = 3;            // a berth backed by less history is a guess
+const STATIONARY_RADIUS_M = 100;     // "moved again" for a parked broadcast
+const DEPARTED_M = 400;
+const MIN_WINDOW_POINTS = 5;
+
+function metresBetween(a, b) {
+  const R = 6371000;
+  const toRad = d => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+function usablePoints(track) {
+  return (track || [])
+    .map(p => ({ lat: +(p && p.lat), lng: +(p && p.lng), ms: Date.parse(p && p.t) }))
+    .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng) && Number.isFinite(p.ms));
+}
+
+// The last moment this track was moving at boat speed. Each fix is compared
+// against the most recent fix at least SPEED_SPAN_MS older, so a single noisy
+// position at a dock cannot pass for a vessel under way.
+function lastUnderwayMs(pts) {
+  let last = null;
+  let ref = 0;
+  for (let i = 1; i < pts.length; i++) {
+    while (ref < i - 1 && pts[i].ms - pts[ref + 1].ms >= SPEED_SPAN_MS) ref++;
+    const span = pts[i].ms - pts[ref].ms;
+    if (span < SPEED_SPAN_MS) continue;
+    const kmh = (metresBetween(pts[ref], pts[i]) / 1000) / (span / 3600000);
+    if (kmh >= UNDERWAY_KMH) last = pts[i].ms;
+  }
+  return last;
+}
+
+// Every stretch this track spent not under way, oldest first, as
+// {fromMs, toMs, at} where at is the position it was sitting. The tail
+// stretch runs to nowMs.
+function stoppedStretches(pts, nowMs) {
+  const under = new Array(pts.length).fill(false);
+  let ref = 0;
+  for (let i = 1; i < pts.length; i++) {
+    while (ref < i - 1 && pts[i].ms - pts[ref + 1].ms >= SPEED_SPAN_MS) ref++;
+    const span = pts[i].ms - pts[ref].ms;
+    if (span < SPEED_SPAN_MS) continue;
+    const kmh = (metresBetween(pts[ref], pts[i]) / 1000) / (span / 3600000);
+    under[i] = kmh >= UNDERWAY_KMH;
+  }
+  const out = [];
+  let lastUnder = null;
+  for (let i = 0; i < pts.length; i++) {
+    if (!under[i]) continue;
+    if (lastUnder !== null && i > lastUnder + 1) {
+      out.push({ fromMs: pts[lastUnder].ms, toMs: pts[i].ms, at: pts[lastUnder] });
+    }
+    lastUnder = i;
+  }
+  if (lastUnder !== null && lastUnder < pts.length - 1) {
+    out.push({ fromMs: pts[lastUnder].ms, toMs: nowMs, at: pts[lastUnder] });
+  }
+  return out;
+}
+
+// The longest stretch this track has spent not under way. The cheap first
+// pass, so a boat that has never stopped never triggers a berth lookup.
+function stoppedForMs(track, nowMs) {
+  const pts = usablePoints(track);
+  if (pts.length < MIN_WINDOW_POINTS) return -1;
+  let best = -1;
+  for (const s of stoppedStretches(pts, nowMs)) {
+    const d = s.toMs - s.fromMs;
+    if (d > best) best = d;
+  }
+  return best;
+}
+
+// Null when the broadcast should stay open; otherwise the ISO time the boat
+// stopped being under way, which becomes ended_at. Ended at the moment it
+// stopped rather than the moment we noticed, matching how orphaned
+// broadcasts are closed. dock may be null: an operator whose berth is not
+// known yet simply gets the longer window everywhere.
+function parkedSince(track, row, nowMs, dock) {
+  const pts = usablePoints(track);
+  if (pts.length < MIN_WINDOW_POINTS) return null;
+
+  // Departed? Farthest any fix ever got from where the broadcast began.
+  const origin = pts[0];
+  let farthest = 0;
+  for (const p of pts) {
+    const d = metresBetween(origin, p);
+    if (d > farthest) farthest = d;
+  }
+  if (farthest < DEPARTED_M) return null;
+
+  /*
+    Scanned over the whole track, not just the tail, because of what the
+    phones actually do after a trip. Tonight's was carried off the boat and
+    then driven up Highway 1, and a car is comfortably under way by any
+    threshold, so a rule that only asks "is it moving right now" would have
+    watched the broadcast drive home through Seaside and never closed it. The
+    berth sit happened; it stays true afterwards. The earliest qualifying
+    stop is the one that counts, since that is when the trip really ended.
+  */
+  for (const stretch of stoppedStretches(pts, nowMs)) {
+    const atDock = !!dock && metresBetween(stretch.at, dock) <= DOCK_RADIUS_M;
+    const window = atDock ? DOCK_WINDOW_MS : DRIFT_WINDOW_MS;
+    if (stretch.toMs - stretch.fromMs < window) continue;
+
+    // A quiet stretch is not a stopped one: too few fixes while the boat sat
+    // means the phone was asleep or out of signal, not tied up.
+    const during = pts.filter(p => p.ms >= stretch.fromMs && p.ms <= stretch.toMs);
+    if (during.length < MIN_WINDOW_POINTS) continue;
+
+    // Working the animals? A sighting or status while it sat wins.
+    const statusMs = Date.parse(row && row.status_at);
+    if (Number.isFinite(statusMs) && statusMs >= stretch.fromMs && statusMs <= stretch.toMs) continue;
+    const busy = ((row && row.sightings) || []).some(s => {
+      const ms = Date.parse(s && s.t);
+      return Number.isFinite(ms) && ms >= stretch.fromMs && ms <= stretch.toMs;
+    });
+    if (busy) continue;
+
+    return new Date(stretch.fromMs).toISOString();
+  }
+  return null;
+}
+
+/*
+  The operator's berth, from operator_dock, held in the instance for an hour.
+
+  A dock moves about as often as a harbour does, so recomputing it per
+  heartbeat would be waste, and this is asked for only when a boat has
+  already been sitting still. Every failure answers "no dock", which costs
+  the longer window rather than a wrong ending.
+*/
+const dockCache = new Map();
+const DOCK_TTL_MS = 60 * 60 * 1000;
+
+async function operatorDock(operatorId) {
+  const hit = dockCache.get(operatorId);
+  if (hit && Date.now() - hit.at < DOCK_TTL_MS) return hit.dock;
+  let dock = null;
+  try {
+    const url = process.env.SUPABASE_URL;
+    const res = await fetch(`${url}/rest/v1/rpc/operator_dock`, {
+      method: 'POST',
+      headers: pgHeaders(),
+      body: JSON.stringify({ op: operatorId }),
+    });
+    if (res.ok) {
+      const rows = await res.json();
+      const r = Array.isArray(rows) ? rows[0] : rows;
+      if (r && Number.isFinite(+r.lat) && Number.isFinite(+r.lng) && (r.trips || 0) >= MIN_DOCK_TRIPS) {
+        dock = { lat: +r.lat, lng: +r.lng };
+      }
+    }
+  } catch (e) {
+    console.error('live-trip: dock lookup failed:', e.message);
+  }
+  dockCache.set(operatorId, { at: Date.now(), dock });
+  return dock;
+}
+
 function pgHeaders(extra) {
   const key = process.env.SUPABASE_SECRET_KEY;
   return Object.assign({
@@ -35,7 +260,7 @@ function pgHeaders(extra) {
 
 async function getRow(tripId) {
   const url = process.env.SUPABASE_URL;
-  const res = await fetch(`${url}/rest/v1/live_trips?trip_id=eq.${tripId}&select=trip_id,operator_id,track,sightings,ended_at,started_at,boat_id,boat_name`, {
+  const res = await fetch(`${url}/rest/v1/live_trips?trip_id=eq.${tripId}&select=trip_id,operator_id,track,sightings,ended_at,ended_reason,status_at,started_at,boat_id,boat_name`, {
     headers: pgHeaders(),
   });
   if (!res.ok) throw new Error(`live_trips read ${res.status}`);
@@ -272,13 +497,52 @@ module.exports = async function handler(req, res) {
         }
       }
       const incoming = cleanPoints(req.body.points);
+
+      /*
+        A broadcast the server parked stays parked, whatever the phone does
+        next. Ordinarily a heartbeat reopens a closed broadcast, which is
+        right for a crew who ended a trip and carried on logging, but it is
+        exactly wrong here: the phone that will not stop is the reason the
+        row was closed, and it will keep beating from a car park, a car, or a
+        kitchen table. A boat genuinely heading back out is a new departure
+        and gets a new trip, which is what the app already does.
+
+        Writes nothing at all: leaving last_seen_at at the moment the boat
+        stopped keeps the record honest and the watchdog's resurrection
+        signal quiet.
+      */
+      if (existing && existing.ended_at && existing.ended_reason === 'auto_stationary') {
+        return res.status(200).json({ ok: true, autoEnded: true, reason: 'stationary' });
+      }
+
       const track = thinTrack(((existing && existing.track) || []).concat(incoming));
+      // The berth is only looked up once a boat has actually been sitting for
+      // the shortest window that could close it, so a vessel under way never
+      // pays for it, and the answer is cached for an hour besides.
+      const nowMs = Date.parse(nowISO);
+      let parked = null;
+      if (existing && stoppedForMs(track, nowMs) >= DOCK_WINDOW_MS) {
+        parked = parkedSince(track, existing, nowMs, await operatorDock(operatorId));
+      }
+      if (parked) {
+        await upsertRow(Object.assign({
+          trip_id: tripId,
+          operator_id: operatorId,
+          track,
+          ended_at: parked,
+          ended_reason: 'auto_stationary',
+        }, boatFields(req.body)));
+        console.log(`live-trip: auto-ended ${tripId}, stationary since ${parked}`);
+        return res.status(200).json({ ok: true, autoEnded: true, reason: 'stationary', endedAt: parked });
+      }
+
       await upsertRow(Object.assign({
         trip_id: tripId,
         operator_id: operatorId,
         last_seen_at: nowISO,
         track,
         ended_at: null,
+        ended_reason: null,
       }, boatFields(req.body)));
       return res.status(200).json({ ok: true, points: track.length });
     }
@@ -314,7 +578,13 @@ module.exports = async function handler(req, res) {
 
     if (action === 'end') {
       if (existing) {
-        await upsertRow({ trip_id: tripId, operator_id: operatorId, ended_at: nowISO });
+        // An already auto-ended broadcast keeps the time it actually went
+        // still; the captain tapping End Trip afterwards is agreeing with
+        // the server, not adding twenty minutes at the dock to the record.
+        if (existing.ended_at && existing.ended_reason === 'auto_stationary') {
+          return res.status(200).json({ ok: true, alreadyEnded: true });
+        }
+        await upsertRow({ trip_id: tripId, operator_id: operatorId, ended_at: nowISO, ended_reason: null });
       }
       return res.status(200).json({ ok: true });
     }
