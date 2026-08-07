@@ -37,6 +37,63 @@ function cleanName(nickname) {
   return (nickname || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
 }
 
+
+/*
+  Our own most recent frame of each whale, signed for the app to display.
+
+  Slater's observation, and it is the right one: a humpback identified as a
+  calf in 2024 does not look like the animal the crew sees in 2026, and
+  Happywhale's avatar is whichever frame that catalogue chose, sometimes
+  years old. The most useful thumbnail for recognising a whale on the water
+  is the last photograph this operator took of it. We already have one for
+  every identification, because the frame that matched is the frame we sent.
+
+  The photos bucket is private, so an img tag cannot fetch it: the URL has to
+  carry its own authorisation. Signed for a week, which comfortably outlives
+  a cached copy of the log, and resized on Supabase's side so a phone on
+  marine signal pulls a thumbnail instead of a four megabyte original.
+
+  Fails open in every direction. A key that will not sign, a storage error, a
+  whole request that times out, and the row simply keeps the Happywhale
+  avatar it already had.
+*/
+const OUR_PHOTO_TTL_SECONDS = 7 * 24 * 60 * 60;
+const OUR_PHOTO_WIDTH = 600;
+
+async function signOurPhotos(rows) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SECRET_KEY;
+  if (!url || !key) return;
+  await Promise.all(rows.map(async (row) => {
+    if (!row.ourKey) return;
+    try {
+      const res = await fetch(
+        `${url}/storage/v1/object/sign/photos/${row.ourKey.split('/').map(encodeURIComponent).join('/')}`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey': key,
+            'Authorization': `Bearer ${key}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            expiresIn: OUR_PHOTO_TTL_SECONDS,
+            transform: { width: OUR_PHOTO_WIDTH, resize: 'contain', quality: 72 },
+          }),
+        },
+      );
+      if (!res.ok) return;
+      const body = await res.json();
+      const signed = body && body.signedURL;
+      if (typeof signed === 'string' && signed) {
+        row.ourPhotoUrl = `${url}/storage/v1${signed.startsWith('/') ? '' : '/'}${signed}`;
+      }
+    } catch (e) {
+      // Keep the catalogue photo; a missing thumbnail is not worth an error.
+    }
+  }));
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -51,7 +108,7 @@ module.exports = async function handler(req, res) {
   try {
     const matches = await pgGet(
       `happywhale_matches?operator_id=eq.${operatorId}&status=eq.matched` +
-      `&select=individual,fun_fact,created_at,delivery_id&order=created_at.desc&limit=500`
+      `&select=individual,fun_fact,created_at,delivery_id,storage_key&order=created_at.desc&limit=500`
     );
 
     // Trip dates for the deliveries these matches came from, one query.
@@ -108,6 +165,10 @@ module.exports = async function handler(req, res) {
         row = {
           individualId: id,
           photoUrl,
+          // The frame of OUR OWN that was identified as this animal, most
+          // recent first. Signed below.
+          ourKey: (typeof m.storage_key === 'string' && m.storage_key) ? m.storage_key : null,
+          ourPhotoUrl: null,
           name: cleanName(ind.nickname) || ind.primaryId || `Whale ${id}`,
           nickname: cleanName(ind.nickname) || null,
           // The raw nickname kept when it carries information the clean one
@@ -143,6 +204,9 @@ module.exports = async function handler(req, res) {
         seenByUs: seen.slice(-20).reverse(),
       });
     }).sort((a, b) => String(b.lastSeenByUs || '').localeCompare(String(a.lastSeenByUs || '')));
+
+    await signOurPhotos(whales);
+    for (const w of whales) delete w.ourKey; // internal only, never leaves here
 
     return res.status(200).json({ whales });
   } catch (e) {
