@@ -140,6 +140,34 @@
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
     }
+    /*
+      The lid over the status bar strip.
+
+      On iOS the shipped binaries run the webview with contentInset automatic,
+      and WKWebView then does something worth writing down: position sticky
+      sticks to the SAFE AREA viewport, below the Dynamic Island, while
+      scrolled pixels still slide up underneath the status bar. So the header
+      stuck exactly where it should and the strip above it was glass, with the
+      page showing through behind the clock. Seen in the field the first
+      evening the Whale Log shipped.
+
+      contentInset is baked into the installed apps, so the fix has to be web
+      side: an opaque slab extending up from the sticky header, riding with
+      it, covering whatever scrolls beneath the status bar. Oversized because
+      insets vary by phone; the excess is off screen. At rest it covers the
+      same strip over the page top, which paints the same near-black the app
+      background does. On Android and desktop the slab sits above the visible
+      viewport entirely and does nothing.
+    */
+    .header::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: -140px;
+      height: 140px;
+      background: #06090B;
+    }
     .header-logo { width: 100%; max-width: 200px; height: 44px; margin: 0 auto; display: flex; align-items: center; justify-content: center; }
     .header-logo img { width: 100%; height: 100%; object-fit: contain; }
     /* Text fallback when the logged-in operator has no light-on-dark logo yet.
