@@ -2628,6 +2628,13 @@
     trip.visibility = document.getElementById('inputVisibility').value;
     trip.conditions = document.getElementById('inputConditions').value;
     trip.liveId = liveId;
+    // The trip's logbook identity, minted once here and kept for life. The
+    // server used to mint one per submission, which made every replay a new
+    // trip; now a re-log after a mid-flight reload lands on the same row.
+    // Distinct from liveId on purpose: live_trips and logbook_trips carry
+    // different identifiers by design, and joining them by accident has
+    // burned us before.
+    trip.logId = mintLiveId();
     setCurrentTime();
     startGPS();
     startDurationTimer();
@@ -3122,6 +3129,7 @@
       showLoggedState();
     } else {
       sentTripId = null;
+      btnSend.style.display = '';
       btnSend.disabled = false;
       btnSend.innerHTML = 'Log Trip';
       btnSend.style.background = '';
@@ -3160,16 +3168,19 @@
   // The post-log UI: button locks green, the summary line states what is now
   // public, and the handoff line points at Flukesend for photo delivery.
   function showLoggedState(logged) {
+    // A logged trip has no button. The old state kept a disabled green "Trip
+    // Logged" button on screen, which still read as a control and invited
+    // another look; Slater's call is the honest version: the action is gone
+    // because there is nothing left to do here, and the words say what
+    // happens next instead.
     const btnSend = document.getElementById('btnSend');
-    btnSend.disabled = true;
-    btnSend.innerHTML = '✓ Trip Logged';
-    btnSend.style.background = 'var(--success)';
+    btnSend.style.display = 'none';
     const species = (logged && logged.species) ?? new Set((trip.sightings || []).map(s => s.species)).size;
     const animals = (logged && logged.animals) ?? (trip.sightings || []).reduce((n, s) => n + (Number(s.count) || 0), 0);
     const summary = document.getElementById('loggedSummary');
     summary.textContent = species > 0
-      ? `${species} species · ${animals} animals — live on your sightings widget.`
-      : 'Trip logged — route and stats are on your sightings widget.';
+      ? `✓ Trip logged · ${species} species · ${animals} animals — ready for Flukesend.`
+      : '✓ Trip logged — ready for Flukesend.';
     summary.style.display = 'block';
     document.getElementById('loggedHandoff').style.display = 'block';
   }
@@ -3577,13 +3588,17 @@
       // trip in a negative-UTC offset onto the wrong day.
       const _ts = trip.startTime instanceof Date ? trip.startTime : new Date(trip.startTime);
       const tripDate = `${_ts.getFullYear()}-${String(_ts.getMonth() + 1).padStart(2, '0')}-${String(_ts.getDate()).padStart(2, '0')}`;
+      // Trips started before logId existed (or restored from old storage)
+      // mint theirs at first log attempt; it persists, so a retry after a
+      // failure or a reload reuses it and the server can spot the replay.
+      if (!trip.logId) { trip.logId = mintLiveId(); saveTrip(); }
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ tripData: trip, tripDate, mode: 'log-only' }),
+        body: JSON.stringify({ tripData: trip, tripDate, mode: 'log-only', logTripId: trip.logId }),
       });
       const result = await res.json();
       if (!result.success) throw new Error(result.error || 'Failed to log trip');
