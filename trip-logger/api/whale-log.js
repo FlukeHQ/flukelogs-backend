@@ -78,9 +78,21 @@ module.exports = async function handler(req, res) {
       if (!row) {
         const encs = (m.individual.encs || []).filter(e => e && e.date);
         const dates = encs.map(e => String(e.date)).sort();
-        const places = [...new Set(
-          encs.map(e => e.location || e.region || null).filter(Boolean)
-        )];
+        /*
+          Place names, de-stuttered. The catalogue spells one place five ways
+          ("Moss Landing", "Moss Landing, CA", "Moss Landing, California"),
+          and the first field screenshot read like a skipping record. When one
+          name is a prefix of another, the shorter wins: it is the same place
+          and the cleaner thing to say on a mic.
+        */
+        const rawPlaces = [...new Set(
+          encs.map(e => (e.location || e.region || '').trim()).filter(Boolean)
+        )].sort((a, b) => a.length - b.length);
+        const places = [];
+        for (const cand of rawPlaces) {
+          const norm = cand.toLowerCase();
+          if (!places.some(kept => norm.startsWith(kept.toLowerCase()))) places.push(cand);
+        }
         row = {
           individualId: id,
           name: cleanName(ind.nickname) || ind.primaryId || `Whale ${id}`,
@@ -95,7 +107,7 @@ module.exports = async function handler(req, res) {
           encountersOnRecord: encs.length,
           firstIdentified: dates[0] || null,
           latestOnRecord: dates[dates.length - 1] || null,
-          places: places.slice(0, 6),
+          places: places.slice(0, 5),
           fact: m.fun_fact || null,
           happywhaleUrl: `https://happywhale.com/individual/${id}`,
           seenByUs: [],
