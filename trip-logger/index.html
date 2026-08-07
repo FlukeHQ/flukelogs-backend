@@ -5772,6 +5772,44 @@
   let whaleLogData = [];
   const WHALE_LOG_CACHE = 'flukelogs.whaleLog';
 
+  /*
+    The reference photos, cached like the log so matching by eye works with
+    zero bars. Each catalogue photo is fetched once, downscaled to about
+    500px, and stored as a JPEG data URL keyed by individual; thirty whales
+    costs roughly a megabyte of localStorage.
+
+    Happywhale's CDN may refuse cross-origin reads, in which case the fetch
+    throws, nothing is cached, and the card falls back to the live URL:
+    fine online, hidden offline. Fail open, never block, same as everything
+    else in this app.
+  */
+  const WHALE_PHOTO_CACHE = 'flukelogs.whalePhotos';
+  let whalePhotoCache = {};
+  try { whalePhotoCache = JSON.parse(localStorage.getItem(WHALE_PHOTO_CACHE) || '{}') || {}; } catch (e) {}
+
+  async function cacheWhalePhotos(whales) {
+    let changed = false;
+    for (const w of whales.slice(0, 30)) {
+      if (!w.photoUrl || whalePhotoCache[w.individualId]) continue;
+      try {
+        const res = await fetch(w.photoUrl, { mode: 'cors' });
+        if (!res.ok) continue;
+        const bmp = await createImageBitmap(await res.blob());
+        const scale = Math.min(1, 500 / Math.max(bmp.width, bmp.height));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(bmp.width * scale));
+        c.height = Math.max(1, Math.round(bmp.height * scale));
+        c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+        bmp.close();
+        whalePhotoCache[w.individualId] = c.toDataURL('image/jpeg', 0.72);
+        changed = true;
+      } catch (e) {}
+    }
+    if (changed) {
+      try { localStorage.setItem(WHALE_PHOTO_CACHE, JSON.stringify(whalePhotoCache)); } catch (e) {}
+    }
+  }
+
   async function openWhaleLog() {
     showScreen('screenWhaleLog');
     const list = document.getElementById('whaleLogList');
@@ -5796,6 +5834,9 @@
       whaleLogData = whales || [];
       renderWhaleLog(whaleLogData);
       try { localStorage.setItem(WHALE_LOG_CACHE, JSON.stringify({ at: Date.now(), whales: whaleLogData })); } catch (e) {}
+      // Photos fill in behind the list; a card opened later gets the cached
+      // copy, and one opened before caching finishes uses the live URL.
+      cacheWhalePhotos(whaleLogData).then(() => {}, () => {});
     } catch (err) {
       // Offline with a saved copy is the designed case, not an error: the
       // saved list stays up and says so quietly.
@@ -5866,8 +5907,21 @@
     const qualifier = (w.fullNickname && w.nickname && w.fullNickname !== w.nickname && /calf/i.test(w.fullNickname))
       ? '<div style="font-size:13px;color:var(--text-muted);margin-top:2px;">' + escapeHtml(w.fullNickname) + '</div>' : '';
     const yourDates = (w.seenByUs || []).map(fmtD).filter(Boolean);
+    // Cached copy first (works offline), live URL as fallback, nothing when
+    // neither exists. Contained, not cropped: the trailing edge is the whole
+    // point of matching by eye, and cover would cut it.
+    const photoSrc = whalePhotoCache[w.individualId] || w.photoUrl || null;
+    const photoBlock = photoSrc
+      ? '<div style="margin-bottom:14px;border-radius:12px;overflow:hidden;background:#000;">' +
+        '<img src="' + escapeHtml(photoSrc) + '" alt="' + escapeHtml(w.name) + '" ' +
+        'style="display:block;width:100%;max-height:260px;object-fit:contain;" ' +
+        'onerror="this.parentNode.style.display=\'none\'">' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin:-8px 0 14px;">Catalogue photo from Happywhale, for matching by eye</div>'
+      : '';
     body.innerHTML =
       '<div class="section-label">Whale Card</div>' +
+      photoBlock +
       '<div style="margin-bottom:14px;">' +
         '<div style="font-size:26px;font-weight:800;line-height:1.15;">' + escapeHtml(w.name) + '</div>' +
         (w.catalogId && w.catalogId !== w.name
