@@ -123,7 +123,11 @@ module.exports = async function handler(req, res) {
         timesSeenByUs: w.seenByUs.length,
         firstSeenByUs: seen[0] || null,
         lastSeenByUs: seen[seen.length - 1] || null,
-        seenByUs: undefined,
+        // The dates themselves, newest first, for the in-app whale card:
+        // "you saw this whale Aug 6, Aug 5, Jul 28" is mic material, and the
+        // detail screen renders offline from this payload, so the dates have
+        // to travel with it.
+        seenByUs: seen.slice(-20).reverse(),
       });
     }).sort((a, b) => String(b.lastSeenByUs || '').localeCompare(String(a.lastSeenByUs || '')));
 
