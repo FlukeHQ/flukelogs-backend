@@ -1213,6 +1213,10 @@
         <svg class="glyph" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.5"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>Sightings</span>
       </a>
+      <a class="menu-item" id="footerWhaleLog" href="#" role="menuitem" onclick="event.preventDefault(); closeHeaderMenu(); openWhaleLog();">
+        <svg class="glyph" viewBox="0 0 24 24"><path d="M3 18c3-6 7-9 9-9s6 3 9 9M12 9V5m0 0-3 2m3-2 3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Whale Log</span>
+      </a>
       <a class="menu-item" id="footerSettings" href="#" role="menuitem" onclick="event.preventDefault(); closeHeaderMenu(); openSettings();">
         <svg class="glyph" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.5-2.4.9a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.5a7 7 0 0 0-2 1.2l-2.4-.9-2 3.5 2 1.5A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.5 2 3.5 2.4-.9a7 7 0 0 0 2 1.2L10 21h4l.5-2.5a7 7 0 0 0 2-1.2l2.4.9 2-3.5-2-1.5A7 7 0 0 0 19 12Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>Settings</span>
@@ -1562,6 +1566,18 @@
       <div class="section-label">Past Trips</div>
       <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.5;">Record an audio note for any past trip — guests on your website can listen to it from the public sightings widget. Pick a trip.</p>
       <div id="pastTripsList"><div class="empty">Loading…</div></div>
+      <button class="btn btn-outline" type="button" onclick="showScreen('screenStart')">Back</button>
+    </div>
+  </div>
+
+  <!-- Whale Log — every individual identified on this operator's trips.
+       The naturalist's mic notes: data-forward, no guest branding, just what
+       the record holds. Read only; nothing here can touch a running trip. -->
+  <div class="screen" id="screenWhaleLog">
+    <div class="section">
+      <div class="section-label">Whale Log</div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.5;">Every whale identified from your trips, newest first. Open a whale on Happywhale for its full sighting map.</p>
+      <div id="whaleLogList"><div class="empty">Loading…</div></div>
       <button class="btn btn-outline" type="button" onclick="showScreen('screenStart')">Back</button>
     </div>
   </div>
@@ -5680,6 +5696,73 @@
   function fmtSec(sec) {
     const s = Math.max(0, Math.floor(sec || 0));
     return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  // ── Whale Log ────────────────────────────────────────────────────
+  // The identified whales, for the mic. Lives beside Past Trips because it is
+  // the same shape of thing: a read-only look backwards, safe during a live
+  // trip, which never touches trip state.
+
+  function whaleDate(iso) {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
+  async function openWhaleLog() {
+    showScreen('screenWhaleLog');
+    const list = document.getElementById('whaleLogList');
+    list.innerHTML = '<div class="empty">Loading…</div>';
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) return sessionExpired();
+      const res = await fetch('/api/whale-log', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const { whales } = await res.json();
+      renderWhaleLog(whales || []);
+    } catch (err) {
+      list.innerHTML = `<div class="empty">Could not load: ${err.message || err}</div>`;
+    }
+  }
+
+  function renderWhaleLog(whales) {
+    const list = document.getElementById('whaleLogList');
+    if (!whales.length) {
+      list.innerHTML = '<div class="empty">No whales identified yet. They appear here after Flukesend matches a fluke photo.</div>';
+      return;
+    }
+    list.innerHTML = whales.map(w => {
+      const seen = 'Seen by you ' + w.timesSeenByUs + (w.timesSeenByUs === 1 ? ' time' : ' times') +
+        (w.lastSeenByUs ? ', last ' + whaleDate(w.lastSeenByUs) : '');
+      const record = w.encountersOnRecord + ' sightings on record' +
+        (w.firstIdentified ? ' since ' + w.firstIdentified.slice(0, 4) : '');
+      // Sex is almost always unknown in the catalogue; shown only when it is
+      // not. Calf relationships live in the full nickname when they exist at
+      // all, so the qualifier line appears only when it says something the
+      // clean name does not.
+      const sexLine = w.sex ? '<div style="font-size:12px;color:var(--text-muted);">Sex: ' + escapeHtml(w.sex) + '</div>' : '';
+      const qualifier = (w.fullNickname && w.nickname && w.fullNickname !== w.nickname && /calf/i.test(w.fullNickname))
+        ? '<div style="font-size:12px;color:var(--text-muted);">' + escapeHtml(w.fullNickname) + '</div>'
+        : '';
+      const places = w.places && w.places.length
+        ? '<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">Seen at: ' + escapeHtml(w.places.join(', ')) + '</div>'
+        : '';
+      const fact = w.fact
+        ? '<div style="font-size:12.5px;font-style:italic;color:var(--text-muted);margin-top:6px;line-height:1.45;">' + escapeHtml(w.fact) + '</div>'
+        : '';
+      return '<a href="' + escapeHtml(w.happywhaleUrl) + '" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit;border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--card);">' +
+        '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">' +
+          '<span style="font-size:16px;font-weight:700;">' + escapeHtml(w.name) + '</span>' +
+          (w.catalogId && w.catalogId !== w.name ? '<span style="font-size:12px;color:var(--text-muted);">' + escapeHtml(w.catalogId) + '</span>' : '') +
+        '</div>' +
+        qualifier + sexLine +
+        '<div style="font-size:12.5px;margin-top:4px;">' + escapeHtml(seen) + ' · ' + escapeHtml(record) + '</div>' +
+        places + fact +
+      '</a>';
+    }).join('');
   }
 
   async function openPastTrips() {
