@@ -1217,6 +1217,23 @@
     .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
     .toast.success { color: #cfeacb; border-color: rgba(34,197,94,0.32); }
     .toast.error { color: #f5b6b6; border-color: rgba(239,68,68,0.32); }
+    /*
+      Errors get to be read. A success toast is a pill that says "Trip
+      logged" and can stay one line forever, but an error is the only text
+      that tells a captain what went wrong, and the pill was cutting it off
+      mid sentence with an ellipsis. Wrapped, squared off, left aligned, and
+      it stays up long enough to finish.
+    */
+    .toast.error {
+      white-space: normal;
+      text-transform: none;
+      letter-spacing: 0.02em;
+      line-height: 1.45;
+      text-align: left;
+      border-radius: 14px;
+      max-width: min(420px, calc(100vw - 32px));
+      overflow: visible;
+    }
 
     /* ── Spinner (inside primary button) ────────────────────────── */
     .spinner {
@@ -3771,7 +3788,18 @@
     const btn = document.getElementById('btnSend');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>Logging...';
+    /*
+      Which step failed, in the message the captain can actually read.
+
+      A log failed on the water on 2026-08-07 with "The string did not match
+      the expected pattern", a WebKit message that names no line and was cut
+      off by the toast anyway. There was no way to tell from the deck, or
+      from here, whether the session, the request, or the reply had broken.
+      Every step now stamps its name, so the next failure says where.
+    */
+    let stage = 'starting';
     try {
+      stage = 'reading your session';
       const { data: { session } } = await sb.auth.getSession();
       if (!session) { sessionExpired(); throw new Error('Session expired — sign in again'); }
       // Compute the trip's local calendar date on the device — the server
@@ -3782,7 +3810,9 @@
       // Trips started before logId existed (or restored from old storage)
       // mint theirs at first log attempt; it persists, so a retry after a
       // failure or a reload reuses it and the server can spot the replay.
+      stage = 'preparing the trip';
       if (!trip.logId) { trip.logId = mintLiveId(); saveTrip(); }
+      stage = 'sending it';
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: {
@@ -3791,8 +3821,11 @@
         },
         body: JSON.stringify({ tripData: trip, tripDate, mode: 'log-only', logTripId: trip.logId }),
       });
+      stage = 'reading the reply';
+      if (!res.ok) throw new Error(`Server said ${res.status}`);
       const result = await res.json();
       if (!result.success) throw new Error(result.error || 'Failed to log trip');
+      stage = 'saving the result';
       sentTripId = result.trip_id || null;
       // Persist the logged marker on the trip itself — a web-view reload
       // used to lose this, making the trip look unlogged and inviting a
@@ -3801,12 +3834,25 @@
       toast('Trip logged', 'success');
       showLoggedState(result.logged);
     } catch (err) {
-      console.error(err);
-      toast(err.message || 'Failed to log trip', 'error');
+      /*
+        Say where it broke and keep the whole thing readable. The trip is
+        never lost at this point: it is on the phone, and its route and
+        sightings are already in the live broadcast on the server, so a
+        failed log is a retry, not a casualty. The captain should be told
+        that rather than left staring at a browser's error.
+      */
+      console.error('logTrip failed while ' + stage, err);
+      lastLogError = { stage, name: err && err.name, message: err && err.message, at: new Date().toISOString() };
+      try { localStorage.setItem('flukelogs.lastLogError', JSON.stringify(lastLogError)); } catch (e) {}
+      toast(`Could not log while ${stage}. Your trip is safe, try again. (${(err && err.message) || 'unknown'})`, 'error');
       btn.disabled = false;
       btn.innerHTML = 'Log Trip';
     }
   }
+
+  // Kept so a failure can be read back off the phone later, when the boat
+  // is in and there is time to look.
+  let lastLogError = null;
 
   // Email the recap to one guest the captain forgot. Reuses the original
   // trip's id so the server files the guest under the same trip and skips
@@ -3981,7 +4027,9 @@
     el.textContent = msg;
     el.className = `toast ${type} show`;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+    // Errors hold longer than confirmations: three seconds is plenty for
+    // "Trip logged" and nowhere near enough for a sentence you have to act on.
+    toastTimer = setTimeout(() => el.classList.remove('show'), type === 'error' ? 9000 : 3000);
   }
 
   if ('serviceWorker' in navigator) {
