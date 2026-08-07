@@ -93,8 +93,17 @@ module.exports = async function handler(req, res) {
           const norm = cand.toLowerCase();
           if (!places.some(kept => norm.startsWith(kept.toLowerCase()))) places.push(cand);
         }
+        // The catalogue's reference photo of this animal, for matching by
+        // eye: the avatar is Happywhale's chosen representative shot, and an
+        // encounter photo stands in when an individual has none.
+        let photoUrl = (ind.avatar && ind.avatar.url) || null;
+        if (!photoUrl) {
+          const withMedia = (m.individual.encs || []).find(e => e && e.media && e.media.url);
+          photoUrl = withMedia ? withMedia.media.url : null;
+        }
         row = {
           individualId: id,
+          photoUrl,
           name: cleanName(ind.nickname) || ind.primaryId || `Whale ${id}`,
           nickname: cleanName(ind.nickname) || null,
           // The raw nickname kept when it carries information the clean one
