@@ -973,8 +973,24 @@ module.exports = async function handler(req, res) {
   // Identify this trip. A normal send mints a fresh trip_id that groups every
   // sighting + guest row from this report. An add-guests resend reuses the
   // original trip's id so the late guest is filed under the same trip.
+  /*
+    Declared out here, which is the whole fix.
+
+    It was declared with const INSIDE the isAddGuests branch below and then
+    used in that branch's else-if, and again in the log-only block further
+    down. const is block scoped, so for every request that was NOT an
+    add-guests resend, which is every ordinary Log Trip, evaluating the
+    else-if threw ReferenceError before the handler's try block existed to
+    catch it. The function 500'd, and the app could only report that the
+    server said 500.
+
+    It shipped at 19:24 on 2026-08-06 in the change that gave the client
+    ownership of the trip id, after the day's trips were already logged, so
+    nothing failed that evening and the first casualties were the next
+    morning's departures. Nobody could log a trip for about seventeen hours.
+  */
+  const tripIdRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (isAddGuests) {
-    const tripIdRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!tripIdRe.test(String(req.body.tripId || ''))) {
       return res.status(400).json({ error: 'add-guests mode requires a valid tripId' });
     }
