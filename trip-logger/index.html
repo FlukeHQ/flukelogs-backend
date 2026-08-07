@@ -2880,6 +2880,7 @@
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error('live-trip ' + res.status);
+    try { return await res.json(); } catch (e) { return {}; }
   }
 
   function startLiveBroadcast() {
@@ -2908,11 +2909,35 @@
     if (!trip.liveId) return;
     const points = livePendingPoints.splice(0);
     try {
-      await livePost(Object.assign({ action: 'heartbeat', tripId: trip.liveId, points }, liveBoatFields()));
+      const reply = await livePost(Object.assign({ action: 'heartbeat', tripId: trip.liveId, points }, liveBoatFields()));
+      // The server closed this broadcast because the boat has been parked
+      // for fifteen minutes. Follow it here rather than beating into a
+      // closed row: the phone stops burning GPS, and the crew gets told at
+      // the dock instead of finding out tomorrow.
+      if (reply && reply.autoEnded) autoEndTrip();
     } catch (e) {
       // Signal drop mid-ocean is normal — re-queue for the next beat.
       livePendingPoints = points.concat(livePendingPoints);
     }
+  }
+
+  /*
+    The boat stopped and nobody tapped End Trip.
+
+    Runs the ordinary end-of-trip path so the review screen, the log prompt
+    and the saved state are identical to a captain-ended trip; the only
+    difference is that the crew is told why. endTrip still posts its end,
+    which the server treats as agreement and ignores, keeping the recorded
+    stop at the minute the boat actually went still.
+
+    Guarded on the trip still running: a captain who ends the trip in the
+    same minute the server does must not be dragged through it twice.
+  */
+  function autoEndTrip() {
+    if (!trip.liveId || trip.endTime) return;
+    trip.liveAutoEnded = true;
+    endTrip();
+    toast('Trip ended automatically. The boat has been stopped for 15 minutes.');
   }
 
   function liveStatus(species, count, opts) {
