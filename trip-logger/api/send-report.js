@@ -979,6 +979,22 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'add-guests mode requires a valid tripId' });
     }
     tripData.tripId = req.body.tripId;
+  } else if (tripIdRe.test(String(req.body.logTripId || ''))) {
+    /*
+      The client owns the trip's identity. The id used to be minted here, per
+      request, which quietly defeated every downstream on_conflict=trip_id
+      guard: a resubmission of the same trip arrived wearing a fresh uuid and
+      the "idempotent" upsert dutifully created a second trip. The dangerous
+      replay is real at sea: Log Trip tapped, the request crawling on marine
+      signal, the webview reloaded before the response lands, so the logged
+      marker never persisted and the app honestly re-asks. Same trip, new id,
+      duplicate on the public widget.
+
+      The app now mints one id per trip at Start Trip and resubmits under it,
+      so a replay lands on the same row. Old cached clients send nothing and
+      keep the minted-fresh behavior they always had.
+    */
+    tripData.tripId = req.body.logTripId;
   } else {
     tripData.tripId = crypto.randomUUID();
   }
@@ -1013,6 +1029,32 @@ module.exports = async function handler(req, res) {
     // Log-only ends here: the trip is on the widget, nobody gets email.
     // Depths are attached above so the sighting rows match a full send's.
     if (isLogOnly) {
+      /*
+        Replay check, and it must come before any insert. logbook_trips
+        upserts on trip_id, but the sightings insert is a plain POST, so a
+        replayed submission would merge the trip row and still double every
+        sighting inside it. When the client supplied a stable id and that id
+        is already logged, the first request won: answer success with the
+        same shape it got, insert nothing. Scoped to the operator so a
+        guessed id from another tenant confirms nothing.
+      */
+      if (tripIdRe.test(String(req.body.logTripId || ''))) {
+        const dupRes = await fetch(
+          `${process.env.SUPABASE_URL}/rest/v1/logbook_trips?trip_id=eq.${tripData.tripId}&operator_id=eq.${operatorId}&select=trip_id&limit=1`,
+          { headers: { 'apikey': process.env.SUPABASE_SECRET_KEY, 'Authorization': `Bearer ${process.env.SUPABASE_SECRET_KEY}` } },
+        );
+        if (dupRes.ok && (await dupRes.json()).length) {
+          console.log(`send-report: trip ${tripData.tripId} already logged, replay answered idempotently`);
+          const speciesCount = new Set((tripData.sightings || []).map(s => s.species)).size;
+          const animalCount = (tripData.sightings || []).reduce((sum, s) => sum + (Number(s.count) || 0), 0);
+          return res.status(200).json({
+            success: true,
+            trip_id: tripData.tripId,
+            logged: { species: speciesCount, animals: animalCount },
+            message: 'Trip already logged',
+          });
+        }
+      }
       await saveToSupabase(tripData, operatorId);
       await saveLogbookTrip(tripData, operatorId);
       saveTrackToSupabase(tripTrack, operatorId, tripData.tripId)
