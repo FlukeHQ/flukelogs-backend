@@ -1073,8 +1073,26 @@ module.exports = async function handler(req, res) {
       }
       await saveToSupabase(tripData, operatorId);
       await saveLogbookTrip(tripData, operatorId);
-      saveTrackToSupabase(tripTrack, operatorId, tripData.tripId)
-        .catch(e => console.error('saveTrackToSupabase background error:', e.message));
+      /*
+        Awaited, not fired and forgotten.
+
+        This was "fire and forget: a track failure shouldn't take down the
+        report send", which reads as prudent and is the opposite. A
+        serverless function may be frozen the moment it responds, so a
+        promise still in flight is a promise that may never finish. The
+        insert therefore raced the response and sometimes lost, which is the
+        whole explanation for a trip landing in the logbook with a perfect
+        list of sightings and no route at all. It happened to Princess on
+        2026-08-07 (378 points broadcast, zero stored) and twice before that,
+        and every time it was read as the app failing to record GPS when in
+        fact the server had thrown the route away on the way to the database.
+
+        A route is not a nicety worth risking to save a few hundred
+        milliseconds. It still cannot take the log down: the helper swallows
+        its own errors, so awaiting it costs the wait and nothing else.
+      */
+      await saveTrackToSupabase(tripTrack, operatorId, tripData.tripId)
+        .catch(e => console.error('saveTrackToSupabase error:', e.message));
       const speciesCount = new Set((tripData.sightings || []).map(s => s.species)).size;
       const animalCount = (tripData.sightings || []).reduce((sum, s) => sum + (Number(s.count) || 0), 0);
       return res.status(200).json({
@@ -1107,10 +1125,12 @@ module.exports = async function handler(req, res) {
     // Skipped on an add-guests resend — the trip is already logged.
     if (!isAddGuests) {
       await saveToSupabase(tripData, operatorId);
-      // GPS breadcrumb for the public widget's real boat-path render. Fire
-      // and forget — a track failure shouldn't take down the report send.
-      saveTrackToSupabase(tripTrack, operatorId, tripData.tripId)
-        .catch(e => console.error('saveTrackToSupabase background error:', e.message));
+      // GPS breadcrumb for the public widget's real boat-path render.
+      // Awaited for the reason spelled out in the log-only branch above: a
+      // serverless function can be frozen the instant it responds, so an
+      // unawaited insert is one that may simply never happen.
+      await saveTrackToSupabase(tripTrack, operatorId, tripData.tripId)
+        .catch(e => console.error('saveTrackToSupabase error:', e.message));
     }
 
     // Record this trip's guests BEFORE the emails fire so getGuestStats()
