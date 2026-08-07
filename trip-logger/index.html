@@ -100,37 +100,6 @@
       isolation: isolate;
     }
 
-    /*
-      The lid under the app, twin of the one over the status bar.
-
-      Same cause as that one: the shipped binaries run the webview with
-      contentInset automatic, and WKWebView only re-measures its viewport
-      when something makes it. Coming back from the lock screen, rotating,
-      or dismissing the keyboard changes the inset, and the layout keeps
-      using the old height until a touch forces a reflow. Anything sized to
-      the viewport, the app shell at 100dvh, the fixed ocean behind it, the
-      two pinned whale screens, then stops short of the real bottom edge and
-      leaves a band of bare page. Which is exactly the gap that a finger
-      "fixes": the finger is not fixing anything, it is just the event that
-      makes the webview measure again.
-
-      So the ocean is painted past where the viewport claims to end. The
-      strip is off screen when the measurement is right, and it is already
-      there when the measurement is stale. Colour matches the last stop of
-      the bay gradient, so the seam cannot be seen even mid glitch. Behind
-      the bay itself, which is opaque, so nothing changes when all is well.
-    */
-    body::after {
-      content: "";
-      position: fixed;
-      left: 0;
-      right: 0;
-      bottom: -220px;
-      height: 220px;
-      background: #0a1014;
-      pointer-events: none;
-      z-index: -3;
-    }
 
     /* ── Ambient ocean — sits behind everything ────────────────── */
     .bay {
