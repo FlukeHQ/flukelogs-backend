@@ -146,15 +146,18 @@
   .now-banner.is-live .now-dot { background: #ff6b6b; box-shadow: 0 0 12px #ff6b6b; animation-duration: 1.4s; }
   .now-banner.is-live .now-label { color: #ff6b6b; }
 
-  /* Delayed boat position on the map */
+  /* Delayed boat position on the map. The same hull the replay boat uses,
+     so a live boat and a played-back one are recognisably the same object
+     and not two different ideas of "boat" on one map. It used to be a plain
+     coloured dot, which read as one more sighting. */
   .live-boat { position: relative; }
-  .live-boat .core {
-    position: absolute; inset: 4px;
-    border-radius: 50%;
-    background: #ff6b6b;
-    border: 2px solid #fff;
-    box-shadow: 0 2px 6px rgba(0,0,0,.4);
+  .live-boat .hull {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 0;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,.45));
   }
+  /* The ring still pulses: that is what says "now" rather than "earlier". */
   .live-boat .ping {
     position: absolute; inset: 0;
     border-radius: 50%;
@@ -1573,6 +1576,10 @@ function renderNowBanner(data) {
 // ?live=1 once a minute and reverts cleanly when the broadcast ends.
 const LIVE_POLL_MS = 60000;
 let liveBoatMarkers = [];
+
+// Only for a boat that matches no roster entry, so there is no QR card colour
+// to contradict. Deliberately not the roster palette.
+const FALLBACK_BOAT_COLORS = ['#ff6b6b', '#4d7cff', '#e0a13a', '#3aa981'];
 let liveTrackLines = [];
 
 // Chaikin corner cutting: each pass replaces every corner with two points a
@@ -1711,8 +1718,15 @@ function renderLive(live) {
   // each boat that identified itself renders in its roster color — the same
   // color its QR code prints in — so the lines and markers read apart.
   const multiBoat = boats.length > 1;
-  boats.forEach(boat => {
-    const color = (multiBoat && boat.color) || '#ff6b6b';
+  boats.forEach((boat, boatIndex) => {
+    // The server resolves boat.color from the roster by id, and now by name
+    // too, so it is the same palette slot the boat's QR card prints in. The
+    // last-resort palette below only fires for a boat that matches no roster
+    // entry at all, where there is no QR colour to contradict, and it exists
+    // so two boats out together are never both the same red.
+    const color = multiBoat
+      ? (boat.color || FALLBACK_BOAT_COLORS[boatIndex % FALLBACK_BOAT_COLORS.length])
+      : '#ff6b6b';
     // Live sighting dots — logged mid-trip, published with the same delay +
     // fuzz as the boat. Same species colors as the permanent pins.
     (boat.sightings || []).forEach(s => {
@@ -1758,7 +1772,7 @@ function renderLive(live) {
         icon: L.divIcon({
           html: '<div class="live-boat" style="width:' + size + 'px;height:' + size + 'px;">' +
             '<div class="ping" style="border-color:' + color + ';"></div>' +
-            '<div class="core" style="background:' + color + ';"></div></div>',
+            '<div class="hull">' + boatSvg(color, 20) + '</div></div>',
           className: '',
           iconSize: [size, size],
           iconAnchor: [size / 2, size / 2],
@@ -2638,13 +2652,19 @@ function animatePolylineHead(line, from, to, ms, boat, token) {
 // A small top-down boat (bow points "up" at 0°). It's a divIcon so we can
 // rotate an inner element to the heading without fighting Leaflet's own
 // position transform on the outer element.
-function makeBoatIcon() {
-  const svg =
-    '<svg width="22" height="22" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
+// The hull itself, so the live boat and the replay boat are the same shape
+// rather than two different ideas of "boat" on one map. Only the fill
+// changes: replay is the fixed teal, live takes the boat's roster colour.
+function boatSvg(fill, size) {
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
       '<path d="M12 2 C7 9 7 15 8 20 C8 21 16 21 16 20 C17 15 17 9 12 2 Z" ' +
-        'fill="#0fbfb1" stroke="#053b37" stroke-width="1.6" stroke-linejoin="round"/>' +
+        'fill="' + fill + '" stroke="#053b37" stroke-width="1.6" stroke-linejoin="round"/>' +
       '<circle cx="12" cy="13" r="1.7" fill="#053b37"/>' +
     '</svg>';
+}
+
+function makeBoatIcon() {
+  const svg = boatSvg('#0fbfb1', 22);
   return L.divIcon({
     className: 'replay-boat',
     html: '<div class="replay-boat-inner" style="line-height:0;transform-origin:50% 50%;transition:transform .12s linear;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45));">' + svg + '</div>',
