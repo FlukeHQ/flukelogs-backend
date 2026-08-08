@@ -23,43 +23,89 @@ struct FlukelogsActivityBundle: WidgetBundle {
     }
 }
 
+// The app's palette, same values as the CSS custom properties at the top of
+// trip-logger/index.html. Moon white is the primary CTA (the LOG SIGHTING
+// button), teal is the live/accent colour (the broadcasting pill), ink is the
+// page. Keep these in step with the web side.
+// Constrained to ShapeStyle so the leading-dot form works inside
+// foregroundStyle/tint, the same way SwiftUI declares .red and .primary.
+// A plain `extension Color` compiles but every call site fails to resolve.
+private extension ShapeStyle where Self == Color {
+    static var brandInk: Color { Color(red: 0.039, green: 0.047, blue: 0.055) }   // #0a0c0e
+    static var brandCream: Color { Color(red: 0.902, green: 0.941, blue: 0.941) } // #e6f0f0
+    static var brandTeal: Color { Color(red: 0.435, green: 0.694, blue: 0.675) }  // #6fb1ac
+}
+
+// The pin-and-fluke mark, cut from the same wordmark art the app header uses.
+// Template rendered, so it takes whatever foreground style it is given.
+private struct FlukeMark: View {
+    var size: CGFloat = 14
+    var body: some View {
+        Image("FlukeMark")
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+    }
+}
+
+// Mark plus "Flukelogs", the same lockup as the app header. 4.67:1.
+private struct FlukelogsWordmark: View {
+    var height: CGFloat = 12
+    var body: some View {
+        Image("FlukelogsWordmark")
+            .resizable()
+            .scaledToFit()
+            .frame(height: height)
+    }
+}
+
 struct FlukelogsActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TripActivityAttributes.self) { context in
             LockScreenCard(context: context)
-                .activityBackgroundTint(Color.black.opacity(0.85))
-                .activitySystemActionForegroundColor(.white)
+                .activityBackgroundTint(Color.brandInk.opacity(0.92))
+                .activitySystemActionForegroundColor(.brandCream)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Label(context.attributes.boatName, systemImage: "sailboat.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
+                    HStack(spacing: 5) {
+                        FlukeMark(size: 13).foregroundStyle(.brandCream)
+                        Text(context.attributes.boatName)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.brandCream)
+                    }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     TripClock(startedAt: context.attributes.tripStartedAt)
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.brandCream)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     DiveRow(state: context.state)
                 }
             } compactLeading: {
-                Image(systemName: context.state.diveStartedAt == nil ? "sailboat.fill" : "water.waves.and.arrow.down")
-                    .foregroundStyle(.cyan)
+                // The mark while under way; the dive glyph while one is timed,
+                // so a glance at the island says which state the boat is in.
+                if context.state.diveStartedAt == nil {
+                    FlukeMark(size: 15).foregroundStyle(.brandCream)
+                } else {
+                    Image(systemName: "water.waves.and.arrow.down")
+                        .foregroundStyle(.brandTeal)
+                }
             } compactTrailing: {
                 if let diveStart = context.state.diveStartedAt {
                     Text(timerInterval: diveStart...farFuture, countsDown: false)
                         .font(.caption2.monospacedDigit())
                         .frame(maxWidth: 44)
-                        .foregroundStyle(.cyan)
+                        .foregroundStyle(.brandTeal)
                 } else {
                     TripClock(startedAt: context.attributes.tripStartedAt)
                         .font(.caption2.monospacedDigit())
                         .frame(maxWidth: 44)
+                        .foregroundStyle(.brandCream)
                 }
             } minimal: {
-                Image(systemName: "sailboat.fill").foregroundStyle(.cyan)
+                FlukeMark(size: 15).foregroundStyle(.brandCream)
             }
         }
     }
@@ -80,19 +126,19 @@ private struct LockScreenCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Label("FLUKELOGS", systemImage: "sailboat.fill")
-                    .font(.caption2.weight(.bold))
-                    .tracking(1.2)
-                    .foregroundStyle(.cyan)
+            // Centre, not firstTextBaseline: the wordmark is an image and has
+            // no baseline to align the clock to.
+            HStack(alignment: .center) {
+                FlukelogsWordmark(height: 13)
+                    .foregroundStyle(.brandCream)
                 Spacer()
                 HStack(spacing: 4) {
                     Image(systemName: "timer")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.brandCream.opacity(0.55))
                     TripClock(startedAt: context.attributes.tripStartedAt)
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.brandCream)
                 }
             }
 
@@ -100,13 +146,13 @@ private struct LockScreenCard: View {
                 HStack(spacing: 8) {
                     Text(context.state.positionText)
                         .font(.footnote.monospaced())
-                        .foregroundStyle(.white.opacity(0.9))
+                        .foregroundStyle(.brandCream.opacity(0.9))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     if context.state.distanceNm > 0 {
                         Text(String(format: "%.1f NM", context.state.distanceNm))
                             .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.brandTeal)
                     }
                 }
             }
@@ -128,18 +174,21 @@ private struct DiveRow: View {
                     Text("DIVE")
                         .font(.caption2.weight(.bold))
                         .tracking(1.2)
-                        .foregroundStyle(.cyan)
+                        .foregroundStyle(.brandTeal)
                     Text(timerInterval: diveStart...farFuture, countsDown: false)
                         .font(.title3.weight(.bold).monospacedDigit())
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.brandCream)
                         .frame(maxWidth: 74, alignment: .leading)
                     Spacer()
                     if #available(iOS 17.0, *) {
+                        // Moon white with ink text, the app's primary CTA.
                         Button(intent: SurfacedIntent()) {
-                            Text("Surfaced").font(.footnote.weight(.semibold))
+                            Text("Surfaced")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.brandInk)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(.cyan)
+                        .tint(.brandCream)
                         Button(intent: CancelDiveIntent()) {
                             Image(systemName: "xmark")
                                 .font(.footnote.weight(.bold))
@@ -155,16 +204,17 @@ private struct DiveRow: View {
                 if let last = state.lastDiveSeconds {
                     Text("last dive \(last / 60):\(String(format: "%02d", last % 60))")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.brandCream.opacity(0.6))
                 }
                 Spacer()
                 if #available(iOS 17.0, *) {
                     Button(intent: StartDiveIntent()) {
                         Label("Start dive", systemImage: "water.waves.and.arrow.down")
                             .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.brandInk)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(.cyan)
+                    .tint(.brandCream)
                 }
             }
         }
@@ -191,12 +241,12 @@ private struct ExpectationLine: View {
             } else {
                 Text("expect surfacing ~\(mins):\(String(format: "%02d", secs)) · chime armed")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.brandCream.opacity(0.6))
             }
         } else {
             Text("first dive of this encounter, timing the rhythm")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.brandCream.opacity(0.6))
         }
     }
 }
