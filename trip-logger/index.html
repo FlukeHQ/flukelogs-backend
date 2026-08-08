@@ -107,7 +107,7 @@
     .header {
       position: sticky;
       top: 0;
-      padding-top: max(14px, env(safe-area-inset-top));
+      padding-top: 14px;
       /* Above Leaflet's in-map panes/controls (which reach z-index 1000) —
          the dropdown menu lives INSIDE this stacking context, so the header
          itself must outrank the map or the menu paints behind it. */
@@ -1300,6 +1300,13 @@
     .menu-item.danger { color: #d6a597; }
     .menu-item.hidden { display: none; }
     #viewportDiag.hidden { display: none; }
+    /*
+      Only the build that sets contentInset:never owns its safe areas, and
+      only there do these insets resolve to anything. Scoped to that build so
+      the installed one cannot be moved by them.
+    */
+    .owns-safe-areas .header { padding-top: max(14px, env(safe-area-inset-top)); }
+    .owns-safe-areas .screen { padding-bottom: max(24px, calc(12px + env(safe-area-inset-bottom))); }
     .menu-divider {
       height: 1px;
       background: var(--hair);
@@ -2507,6 +2514,7 @@
     startGPS();
     startDurationTimer();
     startLiveBroadcast();
+    flActivity.start();
     saveTrip();
     showScreen('screenLog');
     syncQrTile();
@@ -2560,6 +2568,46 @@
     return `${dm(a, 'N', 'S')}  ${dm(b, 'E', 'W')}`;
   }
 
+  /*
+    Lock-screen Live Activity bridge (iOS app only). Every call no-ops on
+    the web, on old binaries without the plugin, and below iOS 16.2, since
+    the plugin guards the OS side itself. Position updates are throttled
+    here: GPS fixes land every couple of seconds but the card only needs a
+    fresh line every thirty, and the timers on it tick by themselves.
+  */
+  const flActivity = {
+    _plugin() {
+      try {
+        return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LiveActivity) || null;
+      } catch (e) { return null; }
+    },
+    _lastUpdate: 0,
+    start() {
+      const pl = this._plugin();
+      if (!pl || !trip.startTime) return;
+      this._lastUpdate = 0;
+      pl.startTrip({
+        startedAt: new Date(trip.startTime).getTime(),
+        boatName: trip.boatName || 'On the water',
+      }).catch(() => {});
+    },
+    position(lat, lng) {
+      const pl = this._plugin();
+      if (!pl) return;
+      const now = Date.now();
+      if (now - this._lastUpdate < 30000) return;
+      this._lastUpdate = now;
+      pl.updateTrip({
+        positionText: fmtLatLng(lat, lng),
+        distanceNm: trip.distanceNM || 0,
+      }).catch(() => {});
+    },
+    end() {
+      const pl = this._plugin();
+      if (pl) pl.endTrip().catch(() => {});
+    },
+  };
+
   function haversineNM(lat1, lng1, lat2, lng2) {
     const R = 3440.065;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -2595,6 +2643,7 @@
       accuracy: (accuracy != null && Number.isFinite(+accuracy)) ? +accuracy : null,
     });
     if (trip.liveId) livePendingPoints.push({ lat: newLat, lng: newLng, t: new Date().toISOString() });
+    flActivity.position(newLat, newLng);
     document.getElementById('statGPS').textContent = fmtLatLng(newLat, newLng);
     document.getElementById('statDistance').textContent = trip.distanceNM.toFixed(2) + ' NM';
     saveTrip();
@@ -2843,7 +2892,44 @@
     Falls back to innerHeight where visualViewport is missing, and to the
     CSS default if the script never runs, so nothing depends on it working.
   */
+  /*
+    viewport-fit=cover belongs ONLY to a build that sets contentInset:never.
+
+    The web layer is served to every binary at once, which is the trap that
+    caught this once already: shipping viewport-fit in the markup moved the
+    page under the status bar on the installed 1.0.x build, where the
+    webview still manages insets itself, and the header landed on top of the
+    clock. Reverted within minutes.
+
+    The LiveActivity plugin exists only in 1.1 and later, which is exactly
+    the build that carries contentInset:never, so its presence is a reliable
+    marker for "this binary wants to own its own safe areas". Anything
+    older, and every browser, keeps the plain viewport it has always had.
+  */
+  function applyViewportFitIfNewBuild() {
+    try {
+      /*
+        The shell announces itself in the URL it loads. A plugin check was
+        the first idea and it is too fragile: the plugin only exists once
+        the widget extension target has been created in Xcode, so a build
+        with contentInset:never and no plugin would take the page under the
+        status bar with nothing holding it clear. Which is exactly what the
+        simulator showed. The query marker travels with the binary and needs
+        nothing compiled.
+      */
+      const shellOwnsSafeAreas =
+        /[?&]shell=safe-areas\b/.test(location.search) ||
+        !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LiveActivity);
+      if (!shellOwnsSafeAreas) return;
+      const meta = document.querySelector('meta[name="viewport"]');
+      if (!meta || /viewport-fit/.test(meta.content)) return;
+      meta.setAttribute('content', meta.content + ', viewport-fit=cover');
+      document.documentElement.classList.add('owns-safe-areas');
+    } catch (e) {}
+  }
+
   function remeasureViewport() {
+    applyViewportFitIfNewBuild();
     try {
       const vv = window.visualViewport;
       const h = Math.round((vv && vv.height) || window.innerHeight || 0);
@@ -3050,6 +3136,7 @@
     stopGPS();
     stopDurationTimer();
     liveEnd();
+    flActivity.end();
     document.getElementById('revDate').textContent =
       trip.startTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const ms = trip.endTime - trip.startTime;
@@ -3702,6 +3789,7 @@
   // Both buttons on the review screen land here. Neither asks: the callers
   // do, so each one can word its own question and nobody sees two dialogs.
   function resetTripState() {
+    flActivity.end();
     clearSavedTrip();
     // Re-render the roster pickers so the next trip gets fresh defaults.
     // Without this the departure picker silently keeps the PREVIOUS trip's
@@ -3890,6 +3978,10 @@
         // joins the broadcast on restore instead of staying dark all day.
         if (!trip.liveId) { trip.liveId = mintLiveId(); saveTrip(); }
         startLiveBroadcast(); // resume (or begin) the broadcast after a reload
+        // Recreate the lock screen card after a webview reload; startTrip on
+        // the plugin ends any survivor first, and the original start time
+        // keeps the trip clock honest.
+        flActivity.start();
         renderSightingList();
         showScreen('screenLog');
         toast('Trip restored', 'success');
