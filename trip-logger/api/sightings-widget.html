@@ -2491,7 +2491,20 @@ async function replayTrip(tripKey, opts) {
   const ordered = allData
     .filter(s => s.trip_id === tripKey && s.lat && s.lng && s.sighting_time)
     .sort((a, b) => String(a.sighting_time).localeCompare(String(b.sighting_time)));
-  if (ordered.length < 2) { if (!silent) showShareToast('Not enough sightings to replay'); return; }
+  // What the replay actually follows is the GPS breadcrumb, when there is
+  // one; the sightings only decide when pins pop in along it. So the gate is
+  // on the path, not on the sighting count. Gating on sightings meant a trip
+  // with a full 500 point route and a single whale refused to replay and
+  // said "not enough sightings", which is how Princess's 2026-08-07 evening
+  // trip looked: one humpback, complete track, no playback. Only the
+  // fallback path (harbor -> sightings -> harbor) genuinely needs two
+  // sightings, because there it IS the line.
+  const preTrack = tripTrackById.get(tripKey);
+  const hasTrack = Array.isArray(preTrack) && preTrack.length >= 2;
+  if (!hasTrack && ordered.length < 2) {
+    if (!silent) showShareToast('Not enough of this trip was recorded to replay');
+    return;
+  }
 
   // Supersede any in-flight replay: bump the token (its animation loops check
   // this and bail) and clear whatever it left on the map, then start fresh.
@@ -2520,8 +2533,8 @@ async function replayTrip(tripKey, opts) {
     // route the captain took. Older trips with no recorded track fall back to
     // the straight harbor → sightings → harbor path.
     const homePort = (OP && OP.home_port) || null;
-    const track = tripTrackById.get(tripKey);
-    const useTrack = Array.isArray(track) && track.length >= 2;
+    const track = preTrack;
+    const useTrack = hasTrack;
 
     let anchors;           // [ [lat,lng], … ] — the line the boat follows
     let revealAtIdx;       // Map(anchorIndex -> [sighting, …]) — pin pop-ins
