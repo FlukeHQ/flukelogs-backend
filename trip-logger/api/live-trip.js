@@ -332,6 +332,33 @@ function thinTrack(track) {
 // Boat identity, sent by roster-aware app clients so the widget can tell
 // two live boats apart. Optional: absent or malformed values are simply not
 // written, and merge-duplicates upserts leave the stored columns untouched.
+// Who started this trip, and on what. Stamped ONLY when the row is first
+// created, so it names whoever tapped Start Trip rather than whichever phone
+// most recently beat. Attribution lands on the login: crew sharing an account
+// resolve to the same id, which is enough to answer the platform question and
+// not enough to separate two naturalists on one account.
+//
+// Never throws and never blocks a broadcast. A trip that cannot be attributed
+// is still a trip, and Start Trip is the most important call of the day.
+function startedByFields(auth, req, existing) {
+  if (existing) return {}; // already stamped, or predates this
+  const fields = {};
+  try {
+    const id = auth && auth.user && auth.user.id;
+    if (UUID_RE.test(String(id || ''))) fields.started_by = id;
+    const ua = String((req.headers && req.headers['user-agent']) || '');
+    // Capacitor wraps the platform's own webview, so the stock UA markers are
+    // what identify the build. Order matters: an Android WebView UA contains
+    // neither iPhone nor iPad, but checking Android first keeps it obvious.
+    if (/Android/i.test(ua)) fields.started_on = 'android';
+    else if (/iPhone|iPad|iPod/i.test(ua)) fields.started_on = 'ios';
+    else if (ua) fields.started_on = 'web';
+  } catch {
+    return {}; // attribution is never worth a failed trip start
+  }
+  return fields;
+}
+
 function boatFields(body) {
   const fields = {};
   if (UUID_RE.test(String(body.boatId || ''))) fields.boat_id = body.boatId;
@@ -616,7 +643,7 @@ module.exports = async function handler(req, res) {
         track,
         ended_at: null,
         ended_reason: null,
-      }, boatFields(req.body)));
+      }, boatFields(req.body), startedByFields(auth, req, existing)));
       return res.status(200).json({ ok: true, points: track.length });
     }
 
@@ -628,7 +655,10 @@ module.exports = async function handler(req, res) {
         last_seen_at: nowISO,
         status_species: species,
         status_at: species ? nowISO : null,
-      }, boatFields(req.body));
+        // A sighting can land before the first heartbeat, in which case THIS
+        // call creates the row. The existing guard inside means only whichever
+        // call actually creates it writes the stamp.
+      }, boatFields(req.body), startedByFields(auth, req, existing));
       // When the app knows where the sighting happened, append it as a live
       // dot. Ephemeral, append-only (mid-trip edits/deletes don't sync — the
       // report at trip end is the real record). Cap like the track.
