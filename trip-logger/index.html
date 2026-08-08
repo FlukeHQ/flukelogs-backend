@@ -4223,6 +4223,126 @@
   // Single boot entry point. Decides which screen to show based on
   // (1) whether there's an active Supabase session and (2) whether
   // there's a mid-trip in localStorage.
+  // FareHarbor booking prefill. These five went out with the conditions
+  // block on 2026-08-07 because they sat next to it in the file, not
+  // because anything wanted them gone. fetchTodayBookings kept its two call
+  // sites, so every login threw ReferenceError and the departure picker
+  // never populated. Restored verbatim from e08e3b9^.
+  async function fetchTodayBookings(token) {
+    if (!token) return;
+    try {
+      const tripDate = todayLocalDate();
+      const res = await fetch(`/api/operator/bookings?trip_date=${tripDate}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const body = await res.json();
+      renderBookingSlots(body.slots || []);
+    } catch (e) {
+      // Silent — captain just fills the form manually
+    }
+  }
+
+  function renderBookingSlots(slots) {
+    const field = document.getElementById('bookingSlotField');
+    const wrap = document.getElementById('bookingSlotPicker');
+    if (!field || !wrap) return;
+    wrap.innerHTML = '';
+
+    // Drop slots whose trip is already over. The captain is starting a new
+    // trip, so a slot that ended hours ago is not what they're about to run —
+    // auto-selecting it would prefill the wrong passenger count and emails.
+    // Fall back to start_at if end_at is missing so we still hide stale rows.
+    const nowMs = Date.now();
+    slots = slots.filter(s => {
+      const endMs = s.end_at ? Date.parse(s.end_at) : NaN;
+      if (!isNaN(endMs)) return endMs >= nowMs;
+      const startMs = s.start_at ? Date.parse(s.start_at) : NaN;
+      if (!isNaN(startMs)) return startMs >= nowMs;
+      return true;
+    });
+
+    if (!slots.length) {
+      field.style.display = 'none';
+      return;
+    }
+    field.style.display = '';
+
+    slots.forEach((slot, i) => {
+      const card = document.createElement('div');
+      card.className = 'booking-slot' + (slots.length === 1 ? ' readonly' : '');
+      const time = fmtSlotTime(slot.start_at);
+      const item = slot.item_name ? ` · ${slot.item_name}` : '';
+      const pax = slot.customer_count;
+      const bookings = slot.booking_count;
+      const sub = `${bookings} booking${bookings === 1 ? '' : 's'}`;
+      card.innerHTML = `
+        <div>
+          <div class="slot-time">${time}${item}</div>
+          <div class="slot-sub">${sub}</div>
+        </div>
+        <div class="slot-count">${pax} ${pax === 1 ? 'guest' : 'guests'}</div>
+      `;
+      if (slots.length > 1) {
+        card.addEventListener('click', () => {
+          wrap.querySelectorAll('.booking-slot').forEach(el => el.classList.remove('on'));
+          card.classList.add('on');
+          applyBookingSlot(slot);
+        });
+      }
+      wrap.appendChild(card);
+    });
+
+    // Auto-apply if there's only one slot. Otherwise the captain picks.
+    if (slots.length === 1) applyBookingSlot(slots[0]);
+  }
+
+  function applyBookingSlot(slot) {
+    // Set passenger count (the stepper's setPax is scoped inside
+    // DOMContentLoaded, so we drive the hidden input + UI directly here)
+    const PAX_MAX = 6;
+    const n = Math.max(0, Math.min(PAX_MAX, slot.customer_count | 0));
+    const paxHidden = document.getElementById('inputPassengers');
+    const paxValEl = document.getElementById('paxVal');
+    const paxLblEl = document.getElementById('paxLabel');
+    if (paxHidden) paxHidden.value = String(n);
+    if (paxValEl) paxValEl.textContent = n;
+    if (paxLblEl) paxLblEl.textContent = n === 1 ? 'of 6 guests' : `of ${PAX_MAX} guests`;
+    const dec = document.getElementById('paxDec');
+    const inc = document.getElementById('paxInc');
+    if (dec) dec.disabled = n <= 0;
+    if (inc) inc.disabled = n >= PAX_MAX;
+
+    // Stage booker emails (deduped) as guest rows — visible when the captain
+    // reaches the send screen; each booker can then get their own photo.
+    for (const email of (slot.booker_emails || [])) {
+      if (email && !guestGroups.some(g => g.email === email)) {
+        // Fill the initial blank row first, then append.
+        const blank = guestGroups.find(g => !g.email && !g.photoData);
+        if (blank) blank.email = email;
+        else guestGroups.push({ email, photoData: null });
+      }
+    }
+    renderGuestRows();
+  }
+
+  function fmtSlotTime(startAt) {
+    if (!startAt) return '';
+    const d = new Date(startAt);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function todayLocalDate() {
+    // YYYY-MM-DD in the device's local timezone. Matches how the webhook
+    // handler derives trip_date from FH's offset-tagged start_at.
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  }
+
   async function bootApp() {
     let session = null;
     try {
