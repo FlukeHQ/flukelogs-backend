@@ -10,6 +10,11 @@
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+		BBE580E7BF7AAF3196F1D19A /* TripActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 431C1F4FBE3D9D3371B12185 /* TripActivityAttributes.swift */; };
+		EC1170E10AAC69BA5DAA2812 /* DiveTimerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AC4F90AE6341DF0D49FD34F /* DiveTimerStore.swift */; };
+		AF15C596B859D84573116636 /* DiveIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FBDAA9EE0E6D4AEA374965A /* DiveIntents.swift */; };
+		2335CD4E2B0637FB787A0D02 /* LiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA2EDFE0F1C0046B1AA5327 /* LiveActivityPlugin.swift */; };
+		7769C87FE89363EF89378F7A /* LiveActivityPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = DBBA24E99F30C55984AFBE23 /* LiveActivityPlugin.m */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
@@ -49,6 +54,11 @@
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		431C1F4FBE3D9D3371B12185 /* TripActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripActivityAttributes.swift; path = "../FlukelogsActivity/TripActivityAttributes.swift"; sourceTree = "<group>"; };
+		5AC4F90AE6341DF0D49FD34F /* DiveTimerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DiveTimerStore.swift; path = "../FlukelogsActivity/DiveTimerStore.swift"; sourceTree = "<group>"; };
+		7FBDAA9EE0E6D4AEA374965A /* DiveIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DiveIntents.swift; path = "../FlukelogsActivity/DiveIntents.swift"; sourceTree = "<group>"; };
+		6DA2EDFE0F1C0046B1AA5327 /* LiveActivityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityPlugin.swift; sourceTree = "<group>"; };
+		DBBA24E99F30C55984AFBE23 /* LiveActivityPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = LiveActivityPlugin.m; sourceTree = "<group>"; };
 		504EC30C1FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
@@ -136,6 +146,11 @@
 				C611456C3026B69D00E19CD5 /* App.entitlements */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
+				431C1F4FBE3D9D3371B12185 /* TripActivityAttributes.swift */,
+				5AC4F90AE6341DF0D49FD34F /* DiveTimerStore.swift */,
+				7FBDAA9EE0E6D4AEA374965A /* DiveIntents.swift */,
+				6DA2EDFE0F1C0046B1AA5327 /* LiveActivityPlugin.swift */,
+				DBBA24E99F30C55984AFBE23 /* LiveActivityPlugin.m */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -307,6 +322,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
+				BBE580E7BF7AAF3196F1D19A /* TripActivityAttributes.swift in Sources */,
+				EC1170E10AAC69BA5DAA2812 /* DiveTimerStore.swift in Sources */,
+				AF15C596B859D84573116636 /* DiveIntents.swift in Sources */,
+				2335CD4E2B0637FB787A0D02 /* LiveActivityPlugin.swift in Sources */,
+				7769C87FE89363EF89378F7A /* LiveActivityPlugin.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -526,7 +546,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_ENTITLEMENTS = FlukelogsActivityExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = DK6TBTP8Q4;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -541,7 +561,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.flukesend.flukelogs.FlukelogsActivity;
@@ -567,7 +587,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_ENTITLEMENTS = FlukelogsActivityExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = DK6TBTP8Q4;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -582,7 +602,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.1;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.flukesend.flukelogs.FlukelogsActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";

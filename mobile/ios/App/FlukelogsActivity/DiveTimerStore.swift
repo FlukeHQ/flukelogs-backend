@@ -104,7 +104,14 @@ enum DiveTimerStore {
         content.sound = .default
         // Breaks through Focus and lights the screen on a locked phone at the
         // rail. On silent it still vibrates and lights.
-        content.interruptionLevel = .timeSensitive
+        //
+        // Guarded because this file is compiled into BOTH targets: the
+        // extension is iOS 16.2, but the app still supports iOS 13, and
+        // interruptionLevel arrived in 15. On anything older the chime still
+        // fires, it just does not break through Focus.
+        if #available(iOS 15.0, *) {
+            content.interruptionLevel = .timeSensitive
+        }
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
         let request = UNNotificationRequest(identifier: chimeId, content: content, trigger: trigger)
         UNUserNotificationCenter.current().add(request)

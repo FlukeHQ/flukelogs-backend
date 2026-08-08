@@ -41,6 +41,25 @@ Then open Xcode:
 npx cap open ios
 ```
 
+## Before every build and every archive: sync the config
+
+```bash
+npx cap copy ios
+```
+
+`ios/App/App/capacitor.config.json` is a generated copy of the one in this
+directory, and `.gitignore` excludes it, so a fresh clone or a stale
+checkout can carry an old version. The runtime reads only the generated
+copy.
+
+This matters most for `packageClassList`. It is the list of native plugin
+classes Capacitor exposes to JS, and a plugin missing from the generated
+copy is simply absent from `window.Capacitor.Plugins` at runtime. The web
+layer's null guards then make it a silent no-op: no crash, no console
+error, the feature just never happens. That is exactly how the 1.1 Live
+Activity was invisible on the lock screen while the plugin was compiled,
+linked, and correct.
+
 ## Running on a device
 
 1. Plug your iPhone in and trust the Mac when prompted.
