@@ -41,24 +41,40 @@ Then open Xcode:
 npx cap open ios
 ```
 
-## Before every build and every archive: sync the config
+## How native plugins get registered (read before adding one)
 
-```bash
-npx cap copy ios
+Capacitor on iOS registers plugins **only** from the `packageClassList`
+array inside the `capacitor.config.json` in the built bundle. There is no
+Objective-C runtime scan; see `registerPlugins()` in Capacitor's
+`CapacitorBridge.swift`. A plugin that is not in that list is simply absent
+from `window.Capacitor.Plugins`, and because the web layer null-guards every
+plugin call, the result is a silent no-op: no crash, no console error, the
+feature just never happens.
+
+`ios/App/App/capacitor.config.json` is **generated** by `npx cap copy ios`
+and gitignored. `cap copy` rebuilds `packageClassList` from the
+npm-installed Capacitor packages, so it cannot know about a plugin that is a
+plain class in the App target, and it strips any hand-added entry every time
+it runs.
+
+**So app-local plugins are registered in code instead**, in
+`App/MainViewController.swift`:
+
+```swift
+override func capacitorDidLoad() {
+    super.capacitorDidLoad()
+    bridge?.registerPluginInstance(LiveActivityPlugin())
+}
 ```
 
-`ios/App/App/capacitor.config.json` is a generated copy of the one in this
-directory, and `.gitignore` excludes it, so a fresh clone or a stale
-checkout can carry an old version. The runtime reads only the generated
-copy.
+That path does not depend on the generated file, so `cap copy` is safe to
+run whenever you like. Add any future app-local plugin the same way, and
+keep the `NSLog` line below it: registration fails silently if a plugin
+stops conforming to `CAPBridgedPlugin`, and the log line turns that into
+something you can see.
 
-This matters most for `packageClassList`. It is the list of native plugin
-classes Capacitor exposes to JS, and a plugin missing from the generated
-copy is simply absent from `window.Capacitor.Plugins` at runtime. The web
-layer's null guards then make it a silent no-op: no crash, no console
-error, the feature just never happens. That is exactly how the 1.1 Live
-Activity was invisible on the lock screen while the plugin was compiled,
-linked, and correct.
+Plugins installed as npm packages (the background-geolocation one) still
+come through `packageClassList` automatically and need nothing.
 
 ## Running on a device
 

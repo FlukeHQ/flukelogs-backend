@@ -13,6 +13,7 @@
 		BBE580E7BF7AAF3196F1D19A /* TripActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 431C1F4FBE3D9D3371B12185 /* TripActivityAttributes.swift */; };
 		EC1170E10AAC69BA5DAA2812 /* DiveTimerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AC4F90AE6341DF0D49FD34F /* DiveTimerStore.swift */; };
 		AF15C596B859D84573116636 /* DiveIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FBDAA9EE0E6D4AEA374965A /* DiveIntents.swift */; };
+		A1B2C3D40002MAINVCBLD0002 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40001MAINVCREF0001 /* MainViewController.swift */; };
 		2335CD4E2B0637FB787A0D02 /* LiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA2EDFE0F1C0046B1AA5327 /* LiveActivityPlugin.swift */; };
 		7769C87FE89363EF89378F7A /* LiveActivityPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = DBBA24E99F30C55984AFBE23 /* LiveActivityPlugin.m */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
@@ -57,6 +58,7 @@
 		431C1F4FBE3D9D3371B12185 /* TripActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripActivityAttributes.swift; path = "../FlukelogsActivity/TripActivityAttributes.swift"; sourceTree = "<group>"; };
 		5AC4F90AE6341DF0D49FD34F /* DiveTimerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DiveTimerStore.swift; path = "../FlukelogsActivity/DiveTimerStore.swift"; sourceTree = "<group>"; };
 		7FBDAA9EE0E6D4AEA374965A /* DiveIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DiveIntents.swift; path = "../FlukelogsActivity/DiveIntents.swift"; sourceTree = "<group>"; };
+		A1B2C3D40001MAINVCREF0001 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		6DA2EDFE0F1C0046B1AA5327 /* LiveActivityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityPlugin.swift; sourceTree = "<group>"; };
 		DBBA24E99F30C55984AFBE23 /* LiveActivityPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = LiveActivityPlugin.m; sourceTree = "<group>"; };
 		504EC30C1FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
@@ -149,6 +151,7 @@
 				431C1F4FBE3D9D3371B12185 /* TripActivityAttributes.swift */,
 				5AC4F90AE6341DF0D49FD34F /* DiveTimerStore.swift */,
 				7FBDAA9EE0E6D4AEA374965A /* DiveIntents.swift */,
+				A1B2C3D40001MAINVCREF0001 /* MainViewController.swift */,
 				6DA2EDFE0F1C0046B1AA5327 /* LiveActivityPlugin.swift */,
 				DBBA24E99F30C55984AFBE23 /* LiveActivityPlugin.m */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
@@ -325,6 +328,7 @@
 				BBE580E7BF7AAF3196F1D19A /* TripActivityAttributes.swift in Sources */,
 				EC1170E10AAC69BA5DAA2812 /* DiveTimerStore.swift in Sources */,
 				AF15C596B859D84573116636 /* DiveIntents.swift in Sources */,
+				A1B2C3D40002MAINVCBLD0002 /* MainViewController.swift in Sources */,
 				2335CD4E2B0637FB787A0D02 /* LiveActivityPlugin.swift in Sources */,
 				7769C87FE89363EF89378F7A /* LiveActivityPlugin.m in Sources */,
 			);

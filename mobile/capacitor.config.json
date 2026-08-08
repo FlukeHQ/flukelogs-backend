@@ -18,7 +18,6 @@
     "allowMixedContent": false
   },
   "packageClassList": [
-    "BackgroundGeolocation",
-    "LiveActivityPlugin"
+    "BackgroundGeolocation"
   ]
 }
