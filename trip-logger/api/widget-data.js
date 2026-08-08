@@ -95,11 +95,25 @@ async function getLiveBlock(operator, showMap) {
   // and the widget renders them in the standard single-boat red.
   const BOAT_COLORS = ['#1f3a8a', '#0f5a4e', '#8a2b3a', '#5b3a8a', '#7a4a12', '#245a3a'];
   const colorByBoatId = {};
-  if (rows.some(r => r.boat_id)) {
+  const colorByBoatName = {};
+  // Resolve by NAME as well as id. A meaningful share of real live rows carry
+  // no boat_id (7 of Princess's last 30), and those boats used to fall
+  // through to null, so two departures out together both drew the standard
+  // red and were indistinguishable at exactly the moment the colour mattered.
+  // The name lookup recovers the SAME palette slot the boat's QR card uses,
+  // which is the whole point: the colour on the map is the colour the crew
+  // already knows. An index-based fallback would have been distinct but
+  // wrong, contradicting the QR card.
+  const normName = s => String(s || '').trim().toLowerCase();
+  if (rows.some(r => r.boat_id || r.boat_name)) {
     const roster = await pgGet(
-      `boats?operator_id=eq.${operator.id}&select=id&order=sort_order.asc,created_at.asc&limit=24`
+      `boats?operator_id=eq.${operator.id}&select=id,name&order=sort_order.asc,created_at.asc&limit=24`
     );
-    (roster || []).forEach((b, i) => { colorByBoatId[b.id] = BOAT_COLORS[i % BOAT_COLORS.length]; });
+    (roster || []).forEach((b, i) => {
+      const c = BOAT_COLORS[i % BOAT_COLORS.length];
+      colorByBoatId[b.id] = c;
+      if (b.name) colorByBoatName[normName(b.name)] = c;
+    });
   }
 
   const delayMin = Math.max(0, +operator.live_delay_minutes || 0);
@@ -122,7 +136,9 @@ async function getLiveBlock(operator, showMap) {
       watching: !!(row.status_species && row.status_at &&
         now - Date.parse(row.status_at) <= WATCHING_WINDOW_MINUTES * 60000),
       boat_name: row.boat_name || null,
-      color: (row.boat_id && colorByBoatId[row.boat_id]) || null,
+      color: (row.boat_id && colorByBoatId[row.boat_id])
+        || colorByBoatName[normName(row.boat_name)]
+        || null,
       position: null,
       track: [],
       sightings: [],
