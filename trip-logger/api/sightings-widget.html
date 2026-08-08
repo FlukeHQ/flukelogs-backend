@@ -2245,11 +2245,20 @@ function renderFeed(data) {
           </div>`
       : '';
 
-    // Replay needs at least two sightings with both a GPS pin and a logged
-    // time. Backfill from migration 0016 gives older trips a synthetic
-    // spread; new trips get the captain's real per-sighting times.
+    // Replayable when there is a line for the boat to follow. That is either
+    // a real GPS breadcrumb, whatever the sighting count, or two placed
+    // sightings for the fallback harbor -> sightings -> harbor path.
+    //
+    // These two conditions must stay in step with the guard at the top of
+    // replayTrip(). They were not: this one asked only about sightings, so
+    // Princess's 2026-08-07 evening trip, one humpback on a full 500 point
+    // route, rendered no play button at all even after replayTrip() was
+    // taught to accept it. Fixing the function without the button just moved
+    // where the trip was refused.
+    const tripTrack = tripTrackById.get(tripKey);
+    const hasTrackForReplay = Array.isArray(tripTrack) && tripTrack.length >= 2;
     const replayable = sightings.filter(s => s.lat && s.lng && s.sighting_time).length;
-    const replayBtn = replayable >= 2
+    const replayBtn = (hasTrackForReplay || replayable >= 2)
       ? `<button class="trip-replay-btn" type="button" aria-label="Replay this trip" data-replay-trip="${tripKey}">
             <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
           </button>`
