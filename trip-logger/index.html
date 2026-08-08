@@ -101,41 +101,6 @@
     }
 
 
-    /* ── Ambient ocean — sits behind everything ────────────────── */
-    .bay {
-      position: fixed; inset: 0; z-index: -2;
-      background:
-        radial-gradient(120% 60% at 50% 110%, rgba(64,108,118,.55) 0%, rgba(20,32,38,.55) 35%, transparent 70%),
-        radial-gradient(80% 50% at 50% -10%, rgba(80,118,128,.18) 0%, transparent 60%),
-        linear-gradient(180deg, #06090b 0%, #0a0e11 40%, #0d1418 70%, #0a1014 100%);
-      overflow: hidden;
-      pointer-events: none;
-    }
-    .bay::before, .bay::after {
-      content: "";
-      position: absolute;
-      inset: -20% -10%;
-      pointer-events: none;
-    }
-    .bay::before {
-      background:
-        linear-gradient(100deg, transparent 38%, rgba(220,240,240,.04) 40%, transparent 44%),
-        linear-gradient(105deg, transparent 55%, rgba(220,240,240,.03) 57%, transparent 62%);
-      mix-blend-mode: screen;
-      animation: bayDrift 18s ease-in-out infinite alternate;
-    }
-    .bay::after {
-      background-image:
-        radial-gradient(1.5px 1.5px at 12% 30%, rgba(255,255,255,.18), transparent 60%),
-        radial-gradient(1px 1px at 78% 60%, rgba(255,255,255,.14), transparent 60%),
-        radial-gradient(1px 1px at 40% 80%, rgba(255,255,255,.18), transparent 60%),
-        radial-gradient(1.5px 1.5px at 88% 20%, rgba(255,255,255,.10), transparent 60%),
-        radial-gradient(1px 1px at 22% 70%, rgba(255,255,255,.12), transparent 60%),
-        radial-gradient(1px 1px at 60% 15%, rgba(255,255,255,.12), transparent 60%);
-      animation: bayMotes 28s linear infinite;
-    }
-    @keyframes bayDrift { 0% { transform: translateX(-1%); } 100% { transform: translateX(1%); } }
-    @keyframes bayMotes { 0% { transform: translate3d(0,0,0); } 100% { transform: translate3d(-40px,-30px,0); } }
 
 
     /* ── Header — 3-column grid: refresh | logo | placeholder ──── */
@@ -1344,14 +1309,13 @@
 
     /* Reduced motion */
     @media (prefers-reduced-motion: reduce) {
-      .bay::before, .bay::after, .pill .dot { animation: none !important; }
+      .pill .dot { animation: none !important; }
     }
   </style>
 </head>
 <body class="is-login">
 
 <!-- Ambient ocean — sits behind every screen -->
-<div class="bay" aria-hidden="true"></div>
 
 <div class="app">
 
