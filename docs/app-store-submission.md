@@ -9,15 +9,15 @@ Copy-paste reference for App Store Connect. Fill the placeholders marked
 
 | Field | Value |
 |-------|-------|
-| App name | Enocean Tours |
+| App name | Flukelogs |
 | Subtitle (<=30 chars) | Log trips, routes and sightings |
-| Bundle ID | com.enoceantours.triplogger |
+| Bundle ID | com.flukesend.flukelogs |
 | Primary category | Business |
 | Secondary category | Travel |
 | Age rating | 4+ |
 | Price | Free |
 
-> Name note: "Enocean Tours" is 13 chars (limit 30). The subtitle above is 31
+> Name note: "Flukelogs" is 9 chars (limit 30). The subtitle above is 31
 > with the word "and"; if App Store Connect rejects it, use "Log trips, routes, sightings" (28).
 
 ---
@@ -81,7 +81,26 @@ whale watching,trip log,wildlife,sightings,boat,gps,marine,naturalist,ocean,logb
 
 ---
 
-## 6. What's New (version 1.0)
+## 6. What's New
+
+### Version 1.1 (current submission)
+
+> Time a whale's dive from your lock screen, without unlocking your phone.
+> Flukelogs learns each animal's rhythm through the encounter and chimes just
+> before she is likely to surface, so cameras are up in time.
+>
+> Your trip time, position and distance run now show on the lock screen and in
+> the Dynamic Island, so you can check a trip without opening the app.
+>
+> Also fixes a gap at the bottom of the screen on newer iPhones.
+
+Note on scope: only the two items above need this binary. The Start Trip
+redesign, the Whale Log fluke thumbnails and the rest of the season's work
+reached captains through the web layer already, since the shell loads
+`server.url`. Do not list those here as new; they have been live for weeks and
+claiming them would read as padding.
+
+### Version 1.0
 
 > First release of Enocean Tours Trip Logger: GPS route recording, wildlife
 > sighting logging, and guest trip reports.
@@ -139,16 +158,39 @@ DEMO ACCOUNT
   Password: << from the password manager >>
   Signs in to Bayside Whale Watch, a demo operator with sample trips.
 
-NEW IN THIS VERSION: MICROPHONE
+NEW IN THIS VERSION: LIVE ACTIVITY AND NOTIFICATIONS
+A trip now shows as a Live Activity on the lock screen and in the Dynamic
+Island, carrying the trip clock, position and distance run. It also carries a
+dive timer: whales dive for minutes at a time, and a captain timing those
+dives can predict the next surfacing and get the guests' cameras up. The
+buttons are App Intents so the crew never has to unlock a wet phone at the
+rail.
+
+Unlike the background location below, this CAN be exercised at a desk:
+
+  1. Sign in with the demo account.
+  2. Choose a boat and departure, tap Start Trip. No movement needed.
+  3. Lock the phone. The Flukelogs card is on the lock screen.
+  4. Tap "Start dive". The card switches to a running dive timer with
+     "Surfaced" and a cancel button, all without unlocking.
+  5. Tap "Surfaced". The dive is recorded and the card reads "last dive 0:12".
+  6. Reopen the app and tap End Trip to clear the card.
+
+The notification permission prompt at Start Trip is for one thing: a local
+chime a few seconds before the whale is predicted to surface. It is optional.
+Declining it leaves every other part of the app working, including the Live
+Activity itself. No push server is involved and no remote notifications are
+sent; the Live Activity is updated locally by the app.
+
+MICROPHONE (unchanged from the approved build)
 Captains record a short spoken recap of a trip, which guests play from the
 operator's public sightings page. Nothing else uses the microphone and it is
 never accessed in the background.
 
-  1. Sign in with the demo account.
-  2. Open the menu and tap Past Trips.
-  3. Tap the July 18 trip. It already has a saved note, shown as
+  1. Open the menu and tap Past Trips.
+  2. Tap the July 18 trip. It already has a saved note, shown as
      "Audio · 0:18", which plays in place.
-  4. To record a new one, tap "Tap to record", speak, stop, then Save audio.
+  3. To record a new one, tap "Tap to record", speak, stop, then Save audio.
 
 BACKGROUND LOCATION (unchanged from the approved build)
 The app requests Always location so it keeps recording the vessel's route
@@ -192,6 +234,16 @@ toggle when we archive.
 ---
 
 ## 10. Still needed from you (checklist)
+
+For the 1.1 submission specifically:
+
+- [ ] Demo account password filled into App Store Connect. A reviewer cannot
+      sign in without it, and every step of the Live Activity walkthrough
+      above starts with signing in.
+- [ ] Confirm the demo operator still has the July 18 trip with the saved
+      audio note, since the microphone walkthrough names it.
+
+Carried over from 1.0:
 
 - [ ] Support URL (or let me add a `/support.html`)
 - [ ] Demo captain account (email + password) for the reviewer
