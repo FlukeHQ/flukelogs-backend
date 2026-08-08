@@ -146,19 +146,17 @@
   .now-banner.is-live .now-dot { background: #ff6b6b; box-shadow: 0 0 12px #ff6b6b; animation-duration: 1.4s; }
   .now-banner.is-live .now-label { color: #ff6b6b; }
 
-  /* Delayed boat position on the map. A boat, not a generic pin: on a map
-     already carrying species pins and sighting dots, one more coloured dot
-     read as another sighting. The silhouette says vessel at a glance. */
+  /* Delayed boat position on the map. The same hull the replay boat uses,
+     so a live boat and a played-back one are recognisably the same object
+     and not two different ideas of "boat" on one map. It used to be a plain
+     coloured dot, which read as one more sighting. */
   .live-boat { position: relative; }
-  .live-boat .core {
-    position: absolute; inset: 3px;
-    border-radius: 50%;
-    background: #ff6b6b;
-    border: 2px solid #fff;
-    box-shadow: 0 2px 6px rgba(0,0,0,.4);
+  .live-boat .hull {
+    position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
+    line-height: 0;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,.45));
   }
-  .live-boat .core svg { width: 74%; height: 74%; display: block; }
   /* The ring still pulses: that is what says "now" rather than "earlier". */
   .live-boat .ping {
     position: absolute; inset: 0;
@@ -1579,15 +1577,6 @@ function renderNowBanner(data) {
 const LIVE_POLL_MS = 60000;
 let liveBoatMarkers = [];
 
-// The live boat marker's glyph. A boat, not another coloured dot: the map
-// already carries species pins and live sighting dots, and one more dot read
-// as a sighting rather than a vessel.
-const BOAT_GLYPH =
-  '<svg viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="1.6"' +
-  ' stroke-linejoin="round" aria-hidden="true">' +
-  '<path d="M2.6 15.4h18.8l-2.4 4.2H5z"/>' +
-  '<path d="M7.4 14.2V8.6h5.2l3.4 5.6z"/></svg>';
-
 // Only for a boat that matches no roster entry, so there is no QR card colour
 // to contradict. Deliberately not the roster palette.
 const FALLBACK_BOAT_COLORS = ['#ff6b6b', '#4d7cff', '#e0a13a', '#3aa981'];
@@ -1783,7 +1772,7 @@ function renderLive(live) {
         icon: L.divIcon({
           html: '<div class="live-boat" style="width:' + size + 'px;height:' + size + 'px;">' +
             '<div class="ping" style="border-color:' + color + ';"></div>' +
-            '<div class="core" style="background:' + color + ';">' + BOAT_GLYPH + '</div></div>',
+            '<div class="hull">' + boatSvg(color, 20) + '</div></div>',
           className: '',
           iconSize: [size, size],
           iconAnchor: [size / 2, size / 2],
@@ -2663,13 +2652,19 @@ function animatePolylineHead(line, from, to, ms, boat, token) {
 // A small top-down boat (bow points "up" at 0°). It's a divIcon so we can
 // rotate an inner element to the heading without fighting Leaflet's own
 // position transform on the outer element.
-function makeBoatIcon() {
-  const svg =
-    '<svg width="22" height="22" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
+// The hull itself, so the live boat and the replay boat are the same shape
+// rather than two different ideas of "boat" on one map. Only the fill
+// changes: replay is the fixed teal, live takes the boat's roster colour.
+function boatSvg(fill, size) {
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
       '<path d="M12 2 C7 9 7 15 8 20 C8 21 16 21 16 20 C17 15 17 9 12 2 Z" ' +
-        'fill="#0fbfb1" stroke="#053b37" stroke-width="1.6" stroke-linejoin="round"/>' +
+        'fill="' + fill + '" stroke="#053b37" stroke-width="1.6" stroke-linejoin="round"/>' +
       '<circle cx="12" cy="13" r="1.7" fill="#053b37"/>' +
     '</svg>';
+}
+
+function makeBoatIcon() {
+  const svg = boatSvg('#0fbfb1', 22);
   return L.divIcon({
     className: 'replay-boat',
     html: '<div class="replay-boat-inner" style="line-height:0;transform-origin:50% 50%;transition:transform .12s linear;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45));">' + svg + '</div>',
