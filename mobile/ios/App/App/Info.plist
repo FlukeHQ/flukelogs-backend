@@ -20,6 +20,8 @@
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>CFBundleDisplayName</key>
 	<string>Flukelogs</string>
 	<key>CFBundleExecutable</key>

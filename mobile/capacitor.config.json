@@ -3,7 +3,7 @@
   "appName": "Flukelogs",
   "webDir": "www",
   "server": {
-    "url": "https://trip-logger-backend.vercel.app",
+    "url": "https://trip-logger-backend.vercel.app/?shell=safe-areas",
     "cleartext": false,
     "allowNavigation": [
       "trip-logger-backend.vercel.app"
@@ -16,5 +16,9 @@
   "android": {
     "useLegacyBridge": true,
     "allowMixedContent": false
-  }
+  },
+  "packageClassList": [
+    "BackgroundGeolocation",
+    "LiveActivityPlugin"
+  ]
 }
