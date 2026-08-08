@@ -103,6 +103,25 @@ const STATIONARY_RADIUS_M = 100;     // "moved again" for a parked broadcast
 const DEPARTED_M = 400;
 const MIN_WINDOW_POINTS = 5;
 
+/*
+  A broadcast whose phone simply stopped talking.
+
+  The parked auto-end only fires while heartbeats are arriving, so it cannot
+  close a trip whose phone was locked, went flat, or lost signal for good: no
+  ping, no evaluation, and the row stays open forever. closeOrphanedBroadcasts
+  catches these, but only when that same boat next broadcasts, which may be
+  the following morning or, for a boat pulled from the roster, never. On
+  2026-08-07 a Princess row sat open two hours after its last ping.
+
+  45 minutes, well past the 10 the widget already uses to hide a stale boat,
+  so closing changes nothing a visitor can see. It is deliberately generous
+  because a working boat offshore can go quiet for a while.
+
+  Safe to be wrong. If the boat comes back and no newer broadcast supersedes
+  it, the heartbeat path writes ended_at: null and the row simply resumes.
+*/
+const STALE_BROADCAST_MS = 45 * 60 * 1000;
+
 function metresBetween(a, b) {
   const R = 6371000;
   const toRad = d => (d * Math.PI) / 180;
@@ -372,6 +391,34 @@ async function closeOrphanedBroadcasts(operatorId, tripId, boat) {
   return rows.length;
 }
 
+// Close this operator's broadcasts that have gone quiet past the threshold.
+// Each is closed at its OWN last_seen_at, matching closeOrphanedBroadcasts, so
+// the record says when the boat stopped reporting and not when we noticed.
+async function closeStaleBroadcasts(operatorId, nowMs) {
+  const url = process.env.SUPABASE_URL;
+  const cutoff = new Date(nowMs - STALE_BROADCAST_MS).toISOString();
+  const query =
+    `live_trips?operator_id=eq.${operatorId}&ended_at=is.null` +
+    `&last_seen_at=lt.${encodeURIComponent(cutoff)}&select=trip_id,started_at,last_seen_at`;
+  const res = await fetch(`${url}/rest/v1/${query}`, { headers: pgHeaders() });
+  if (!res.ok) throw new Error(`stale read ${res.status}`);
+  const rows = await res.json();
+
+  for (const r of rows) {
+    const endAt = (r.last_seen_at && r.last_seen_at >= r.started_at) ? r.last_seen_at : r.started_at;
+    const patch = await fetch(
+      `${url}/rest/v1/live_trips?trip_id=eq.${r.trip_id}&operator_id=eq.${operatorId}`,
+      {
+        method: 'PATCH',
+        headers: pgHeaders({ 'Prefer': 'return=minimal' }),
+        body: JSON.stringify({ ended_at: endAt, ended_reason: 'auto_stale' }),
+      },
+    );
+    if (!patch.ok) throw new Error(`stale close ${patch.status}`);
+  }
+  return rows.length;
+}
+
 function cleanPoints(points) {
   if (!Array.isArray(points)) return [];
   return points
@@ -509,6 +556,17 @@ module.exports = async function handler(req, res) {
           if (closed) console.log(`live-trip: closed ${closed} orphaned broadcast(s) for operator ${operatorId}`);
         } catch (e) {
           console.error('live-trip: closing orphaned broadcasts failed:', e.message);
+        }
+        // Same moment, same swallowed failure, wider net. The orphan close
+        // above is scoped to THIS boat, so a different boat of the same
+        // operator that went quiet and never broadcast again would stay open
+        // forever. This catches those. Swallowed for the same reason: a stale
+        // row is untidy, a boat that drops off the live map is not.
+        try {
+          const stale = await closeStaleBroadcasts(operatorId, Date.now());
+          if (stale) console.log(`live-trip: closed ${stale} stale broadcast(s) for operator ${operatorId}`);
+        } catch (e) {
+          console.error('live-trip: closing stale broadcasts failed:', e.message);
         }
       }
       const incoming = cleanPoints(req.body.points);
