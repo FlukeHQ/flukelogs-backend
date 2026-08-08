@@ -8,6 +8,11 @@
 //
 
 import ActivityKit
+// The dive row's buttons are Button(intent:), which lives in AppIntents.
+// DiveIntents.swift imports it; this file uses the initializer, so it needs
+// the import too. Missing here since the code was written, because the
+// widget target did not exist to compile it until now.
+import AppIntents
 import SwiftUI
 import WidgetKit
 
