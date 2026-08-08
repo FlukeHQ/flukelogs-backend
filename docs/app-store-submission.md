@@ -168,12 +168,15 @@ rail.
 
 Unlike the background location below, this CAN be exercised at a desk:
 
-  1. Sign in with the demo account.
-  2. Choose a boat and departure, tap Start Trip. No movement needed.
+  1. Sign in with the demo account. Accept the location disclosure that
+     appears the first time (scroll to the end, tick the box, agree).
+  2. Tap Start Trip. No movement needed, and nothing else has to be chosen:
+     the departure is already filled in from the operator's booking system.
   3. Lock the phone. The Flukelogs card is on the lock screen.
   4. Tap "Start dive". The card switches to a running dive timer with
      "Surfaced" and a cancel button, all without unlocking.
-  5. Tap "Surfaced". The dive is recorded and the card reads "last dive 0:12".
+  5. Tap "Surfaced". The dive is recorded and the card goes back to
+     "Start dive", now showing how long that dive lasted.
   6. Reopen the app and tap End Trip to clear the card.
 
 The notification permission prompt at Start Trip is for one thing: a local
