@@ -169,15 +169,13 @@ DEMO ACCOUNT
   Password: << from the password manager >>
   Signs in to Bayside Whale Watch, a demo operator with sample trips.
 
-NEW IN THIS VERSION: LIVE ACTIVITY AND NOTIFICATIONS
-A trip now shows as a Live Activity on the lock screen and in the Dynamic
-Island, carrying the trip clock, position and distance run. It also carries a
-dive timer: whales dive for minutes at a time, and a captain timing those
-dives can predict the next surfacing and get the guests' cameras up. The
-buttons are App Intents so the crew never has to unlock a wet phone at the
-rail.
+WHAT CHANGED IN 1.2
+One fix. In 1.2 the dive timer buttons on the Live Activity run without the
+phone being unlocked. In 1.1 they rendered correctly and then asked for a
+passcode, which defeated the purpose of putting them on the lock screen.
+Nothing else in the binary changed.
 
-Unlike the background location below, this CAN be exercised at a desk:
+The whole feature can be exercised at a desk:
 
   1. Sign in with the demo account. Accept the location disclosure that
      appears the first time (scroll to the end, tick the box, agree).
@@ -192,11 +190,12 @@ Unlike the background location below, this CAN be exercised at a desk:
      "Start dive", now showing how long that dive lasted.
   6. Reopen the app and tap End Trip to clear the card.
 
-The notification permission prompt at Start Trip is for one thing: a local
-chime a few seconds before the whale is predicted to surface. It is optional.
-Declining it leaves every other part of the app working, including the Live
-Activity itself. No push server is involved and no remote notifications are
-sent; the Live Activity is updated locally by the app.
+NOTIFICATIONS
+The permission prompt at Start Trip is for one thing: a local chime a few
+seconds before the whale is predicted to surface. It is optional. Declining it
+leaves every other part of the app working, including the Live Activity
+itself. No push server is involved and no remote notifications are sent; the
+Live Activity is updated locally by the app.
 
 MICROPHONE (unchanged from the approved build)
 Captains record a short spoken recap of a trip, which guests play from the
