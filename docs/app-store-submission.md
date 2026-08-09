@@ -83,7 +83,18 @@ whale watching,trip log,wildlife,sightings,boat,gps,marine,naturalist,ocean,logb
 
 ## 6. What's New
 
-### Version 1.1 (current submission)
+### Version 1.2 (current submission)
+
+> The dive timer buttons now work straight from the lock screen, without
+> asking for your passcode.
+
+Note on scope: one line, because one thing changed. 1.1's dive buttons
+rendered on the lock screen and then demanded Face ID, which defeated the
+point of putting them there. LiveActivityIntent lets an intent run from the
+card; `authenticationPolicy` separately decides whether the phone must be
+unlocked, and it defaults to requiring it. Nothing else in the binary moved.
+
+### Version 1.1
 
 > Time a whale's dive from your lock screen, without unlocking your phone.
 > Flukelogs learns each animal's rhythm through the encounter and chimes just
@@ -174,7 +185,9 @@ Unlike the background location below, this CAN be exercised at a desk:
      the departure is already filled in from the operator's booking system.
   3. Lock the phone. The Flukelogs card is on the lock screen.
   4. Tap "Start dive". The card switches to a running dive timer with
-     "Surfaced" and a cancel button, all without unlocking.
+     "Surfaced" and a cancel button, all without unlocking. If the phone asks
+     for a passcode here you are on 1.1, not 1.2; that is the single thing
+     1.2 fixes.
   5. Tap "Surfaced". The dive is recorded and the card goes back to
      "Start dive", now showing how long that dive lasted.
   6. Reopen the app and tap End Trip to clear the card.
