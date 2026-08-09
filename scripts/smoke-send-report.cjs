@@ -36,9 +36,16 @@ process.env.SUPABASE_URL = 'https://smoke.invalid';
 process.env.SUPABASE_SECRET_KEY = 'smoke-service-key';
 
 const calls = [];
+// Bodies as well as routes: attribution is a thing WRITTEN, so asserting it
+// means looking at the row, not just at whether a POST happened.
+const writes = [];
 global.fetch = async (url, opts = {}) => {
   const method = (opts.method || 'GET').toUpperCase();
-  calls.push(`${method} ${String(url).replace(process.env.SUPABASE_URL, '')}`);
+  const route = String(url).replace(process.env.SUPABASE_URL, '');
+  calls.push(`${method} ${route}`);
+  if (method === 'POST' && opts.body) {
+    try { writes.push({ route, rows: JSON.parse(opts.body) }); } catch { /* not json, ignore */ }
+  }
   // Reads answer empty (no replay, no live track to backfill); writes answer
   // created. Both are the shapes PostgREST actually returns.
   const body = method === 'GET' ? [] : [{ id: 'smoke-row' }];
@@ -69,7 +76,12 @@ Module._load = function (request, parent, isMain) {
 // test needs no session and no operator row.
 require.cache[AUTH] = {
   id: AUTH, filename: AUTH, loaded: true, exports: {
-    authenticate: async () => ({ operatorId: 'smoke-test-operator' }),
+    // A user, because the handler now attributes the log to whoever is
+    // signed in. Without one, logged_by would be silently untestable.
+    authenticate: async () => ({
+      operatorId: 'smoke-test-operator',
+      user: { id: '9f1d3a70-5c28-4b6e-8a11-2d4c6e8f0a92' },
+    }),
   },
 };
 require.cache[OPERATORS] = {
@@ -146,6 +158,49 @@ const CASES = [
     expect: 200,
   },
   {
+    /*
+      Attribution, added 2026-08-09. The point is not that the request
+      succeeds, it is that the row carries who logged it, on what, and which
+      broadcast it came from. A silently absent column looks exactly like a
+      passing test otherwise, which is the mistake this whole file exists to
+      stop repeating.
+    */
+    name: 'log-only records who logged it, the platform, and the live trip id',
+    body: (() => {
+      const b = tripBody();
+      b.tripData.liveId = 'a1b2c3d4-e5f6-4711-8899-aabbccddeeff';
+      return b;
+    })(),
+    headers: { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15' },
+    expect: 200,
+    check() {
+      const w = writes.find(w => w.route.includes('logbook_trips'));
+      if (!w) return 'no logbook_trips row was written';
+      const row = Array.isArray(w.rows) ? w.rows[0] : w.rows;
+      if (row.logged_by !== '9f1d3a70-5c28-4b6e-8a11-2d4c6e8f0a92') {
+        return `logged_by was ${JSON.stringify(row.logged_by)}`;
+      }
+      if (row.logged_on !== 'ios') return `logged_on was ${JSON.stringify(row.logged_on)} (expected ios)`;
+      if (row.live_trip_id !== 'a1b2c3d4-e5f6-4711-8899-aabbccddeeff') {
+        return `live_trip_id was ${JSON.stringify(row.live_trip_id)}`;
+      }
+      return null;
+    },
+  },
+  {
+    name: 'an Android user agent is recorded as android, not ios',
+    body: (() => { const b = tripBody(); b.logTripId = '7c2e9a15-4b83-4c66-91af-0d5e7b3a6f28'; return b; })(),
+    headers: { 'user-agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36' },
+    expect: 200,
+    check() {
+      const w = writes.filter(w => w.route.includes('logbook_trips')).pop();
+      if (!w) return 'no logbook_trips row was written';
+      const row = Array.isArray(w.rows) ? w.rows[0] : w.rows;
+      if (row.logged_on !== 'android') return `logged_on was ${JSON.stringify(row.logged_on)} (expected android)`;
+      return null;
+    },
+  },
+  {
     name: 'add-guests with a bad trip id is rejected cleanly, not with a 500',
     body: { mode: 'add-guests', tripId: 'not-a-uuid', tripData: tripBody().tripData, guests: [{ email: 'a@b.co' }] },
     expect: 400,
@@ -161,15 +216,20 @@ const OUR_BUG = /ReferenceError|is not defined|Cannot read propert|is not a func
   for (const c of CASES) {
     const res = mockRes();
     let thrown = null;
+    // Fresh per case, so a check() sees only its own writes.
+    writes.length = 0;
     try {
-      await handler({ method: 'POST', body: c.body, headers: {} }, res);
+      await handler({ method: 'POST', body: c.body, headers: c.headers || {} }, res);
     } catch (e) {
       thrown = e;
     }
 
     const detail = JSON.stringify(res.body || {});
     const bug = thrown || OUR_BUG.test(detail);
-    const ok = !bug && res.statusCode === c.expect;
+    // A 200 is not the whole answer for a case that asserts on what was
+    // written: a column silently missing from the row still returns 200.
+    const checkFailure = (!bug && res.statusCode === c.expect && c.check) ? c.check() : null;
+    const ok = !bug && res.statusCode === c.expect && !checkFailure;
 
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${c.name}`);
     if (!ok) {
@@ -177,6 +237,8 @@ const OUR_BUG = /ReferenceError|is not defined|Cannot read propert|is not a func
       if (thrown) {
         console.error(`      threw ${thrown.constructor.name}: ${thrown.message}`);
         console.error(String(thrown.stack).split('\n').slice(1, 4).join('\n'));
+      } else if (checkFailure) {
+        console.error(`      ${checkFailure}`);
       } else {
         console.error(`      expected ${c.expect}, got ${res.statusCode}`);
         console.error(`      body: ${detail.slice(0, 300)}`);
