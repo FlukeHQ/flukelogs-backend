@@ -617,11 +617,40 @@ async function saveToSupabase(tripData, operatorId) {
 // navigator.geolocation on the PWA. Server-side downsample to 500 points max
 // so a noisy device doesn't blow up the table, and silently no-op if the
 // payload is empty (the widget then falls back to pin-to-pin lines).
+/*
+  Who is logging, and on which build.
+
+  Never throws. Log Trip is the most important button in the product and it
+  must not fail because attribution could not be worked out; every caller
+  treats a missing answer as simply unknown.
+
+  Platform comes from the request user agent, since Capacitor wraps the
+  platform's own webview and the stock markers are what identify the build.
+*/
+function logAttribution(auth, req) {
+  try {
+    const userId = auth && auth.user && auth.user.id;
+    const ua = String((req && req.headers && req.headers['user-agent']) || '');
+    let platform = null;
+    if (/Android/i.test(ua)) platform = 'android';
+    else if (/iPhone|iPad|iPod/i.test(ua)) platform = 'ios';
+    else if (ua) platform = 'web';
+    return {
+      userId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(userId || ''))
+        ? userId
+        : null,
+      platform,
+    };
+  } catch {
+    return { userId: null, platform: null };
+  }
+}
+
 // The trip-level record: which boat, which scheduled departure, who was
 // aboard. Written once per logged trip so Flukesend's getLoggedTrip can
 // fill the send form's whole Trip step, not just species. Upsert on
 // trip_id so a retried log never duplicates the row.
-async function saveLogbookTrip(tripData, operatorId) {
+async function saveLogbookTrip(tripData, operatorId, attribution) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SECRET_KEY;
   if (!supabaseUrl || !supabaseKey || !operatorId || !tripData || !tripData.tripId) return;
@@ -644,6 +673,30 @@ async function saveLogbookTrip(tripData, operatorId) {
       ? tripData.crewNames.filter(n => typeof n === 'string' && n.trim()).map(n => n.trim().slice(0, 120)).slice(0, 30)
       : [],
   };
+
+  /*
+    Who logged it, on what, and which broadcast it came from.
+
+    live_trips.started_by (migration 0063) answers who tapped Start Trip, and
+    could never answer who LOGGED a trip that came out wrong, because the
+    broadcast id and the logged trip id are different values with nothing
+    joining them. logged_by needs no join: send-report authenticates every
+    request, so the person is already in hand right here.
+
+    Usually the same person who started the trip, but not always. A phone dies
+    and someone else logs from the dock, and that is exactly the case worth
+    being able to see.
+
+    Spread in rather than assigned so a missing field is simply absent from
+    the row: this is an upsert with merge-duplicates, and writing undefined
+    would blank a value a previous attempt got right.
+  */
+  if (attribution && attribution.userId) row.logged_by = attribution.userId;
+  if (attribution && attribution.platform) row.logged_on = attribution.platform;
+  if (typeof tripData.liveId === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tripData.liveId)) {
+    row.live_trip_id = tripData.liveId;
+  }
 
   try {
     const response = await fetch(`${supabaseUrl}/rest/v1/logbook_trips?on_conflict=trip_id`, {
@@ -1072,7 +1125,7 @@ module.exports = async function handler(req, res) {
         }
       }
       await saveToSupabase(tripData, operatorId);
-      await saveLogbookTrip(tripData, operatorId);
+      await saveLogbookTrip(tripData, operatorId, logAttribution(auth, req));
       /*
         Awaited, not fired and forgotten.
 
