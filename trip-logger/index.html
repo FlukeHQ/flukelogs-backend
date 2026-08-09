@@ -2582,14 +2582,31 @@
       } catch (e) { return null; }
     },
     _lastUpdate: 0,
+    // Why this records a status instead of just failing quietly: every path
+    // here is guarded so Android and older builds no-op harmlessly, which
+    // also means an iPhone that SHOULD show the card and does not gives back
+    // absolutely nothing to look at. On 2026-08-09 the card did not appear on
+    // a current iPhone and there was no way to tell from the outside whether
+    // the plugin was missing, the OS had Live Activities switched off, or the
+    // request itself failed. The Settings diagnostics read this.
+    _status: 'not attempted',
     start() {
       const pl = this._plugin();
-      if (!pl || !trip.startTime) return;
+      if (!pl) { this._status = 'no plugin on this build'; return; }
+      if (!trip.startTime) { this._status = 'no trip start time'; return; }
       this._lastUpdate = 0;
+      this._status = 'requested, waiting';
       pl.startTrip({
         startedAt: new Date(trip.startTime).getTime(),
         boatName: trip.boatName || 'On the water',
-      }).catch(() => {});
+      }).then(r => {
+        // startTrip resolves {started:false} when the OS has Live Activities
+        // off, and {started:false, error} when ActivityKit refused the
+        // request. Those are different problems and must not look alike.
+        this._status = (r && r.started)
+          ? 'started OK'
+          : 'refused: ' + ((r && r.error) || 'Live Activities are off for this app');
+      }).catch(e => { this._status = 'threw: ' + (e && e.message ? e.message : String(e)); });
     },
     position(lat, lng) {
       const pl = this._plugin();
@@ -4038,7 +4055,17 @@
     const active = document.querySelector('.screen.active');
     const r = el => { const b = el ? el.getBoundingClientRect() : null; return b ? Math.round(b.top) + '..' + Math.round(b.bottom) + ' (h ' + Math.round(b.height) + ')' : 'none'; };
 
-    out.textContent = [
+    const cap = window.Capacitor || null;
+    const laPlugin = (cap && cap.Plugins && cap.Plugins.LiveActivity) || null;
+    const liveActivity = [
+      'IN NATIVE SHELL         ' + (cap ? 'yes' : 'no, this is a browser'),
+      'PLUGINS REGISTERED      ' + (cap && cap.Plugins ? Object.keys(cap.Plugins).join(', ') : 'none'),
+      'LiveActivity plugin     ' + (laPlugin ? 'present' : 'MISSING'),
+      'last start() result     ' + (typeof flActivity !== 'undefined' ? flActivity._status : 'unknown'),
+      '',
+    ];
+
+    out.textContent = liveActivity.concat([
       'window.innerHeight      ' + window.innerHeight,
       'documentElement.client  ' + de.clientHeight,
       'documentElement.scroll  ' + de.scrollHeight,
@@ -4056,7 +4083,7 @@
       'active screen           ' + (active ? active.id : 'none') + '  ' + r(active),
       'window.scrollY          ' + Math.round(window.scrollY),
       'standalone/native       ' + (!!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())),
-    ].join('\n');
+    ]).join('\n');
   }
 
   function goHome() {
