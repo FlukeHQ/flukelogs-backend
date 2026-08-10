@@ -20,6 +20,9 @@
 //  a generated file at all. Run `cap copy` as often as you like.
 //
 
+#if DEBUG
+import ActivityKit
+#endif
 import Capacitor
 import UIKit
 
@@ -37,3 +40,44 @@ class MainViewController: CAPBridgeViewController {
               bridge?.plugin(withName: "LiveActivity") != nil ? "YES" : "NO")
     }
 }
+
+/*
+  Debug-only harness for the Live Activity, used to reproduce the lock screen
+  passcode bug of 2026-08-09 without needing a signed-in session: the activity
+  and its buttons are pure ActivityKit and never required a login, only the
+  path that normally starts them did.
+
+  DEBUG + environment gated twice over, so it cannot exist in a release build
+  and cannot fire in a debug build unless launched with FL_LA_TEST=1.
+*/
+#if DEBUG
+extension MainViewController {
+    override public func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard ProcessInfo.processInfo.environment["FL_LA_TEST"] == "1" else { return }
+        if #available(iOS 16.2, *) {
+            let attributes = TripActivityAttributes(
+                tripStartedAt: Date(),
+                boatName: "Test Boat"
+            )
+            var state = TripActivityAttributes.ContentState(
+                positionText: "N 36 36.000 W 121 54.000",
+                distanceNm: 1.2,
+                diveStartedAt: nil,
+                expectedSurfacing: nil,
+                lastDiveSeconds: nil
+            )
+            DiveTimerStore.pushDiveState(into: &state)
+            do {
+                _ = try Activity<TripActivityAttributes>.request(
+                    attributes: attributes,
+                    content: ActivityContent(state: state, staleDate: nil)
+                )
+                NSLog("[FL_LA_TEST] test activity requested OK")
+            } catch {
+                NSLog("[FL_LA_TEST] activity request FAILED: %@", error.localizedDescription)
+            }
+        }
+    }
+}
+#endif
