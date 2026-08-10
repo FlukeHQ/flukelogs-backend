@@ -62,7 +62,7 @@ private struct FlukelogsWordmark: View {
 struct FlukelogsActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TripActivityAttributes.self) { context in
-            LockScreenCard(context: context)
+            LockScreenCard(context: context, dive: resolvedDive(context.state))
                 .activityBackgroundTint(Color.brandInk.opacity(0.92))
                 .activitySystemActionForegroundColor(.brandCream)
         } dynamicIsland: { context in
@@ -81,7 +81,7 @@ struct FlukelogsActivityWidget: Widget {
                         .foregroundStyle(.brandCream)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    DiveRow(state: context.state)
+                    DiveRow(state: resolvedDive(context.state))
                 }
             } compactLeading: {
                 // The mark while under way; the dive glyph while one is timed,
@@ -93,7 +93,7 @@ struct FlukelogsActivityWidget: Widget {
                         .foregroundStyle(.brandTeal)
                 }
             } compactTrailing: {
-                if let diveStart = context.state.diveStartedAt {
+                if let diveStart = resolvedDive(context.state).diveStartedAt {
                     Text(timerInterval: diveStart...farFuture, countsDown: false)
                         .font(.caption2.monospacedDigit())
                         .frame(maxWidth: 44)
@@ -113,6 +113,23 @@ struct FlukelogsActivityWidget: Widget {
 
 private var farFuture: Date { Date(timeIntervalSinceNow: 60 * 60 * 24) }
 
+/*
+  The dive fields, resolved from DiveTimerStore at RENDER time rather than
+  trusted from the pushed ContentState.
+
+  This is the other half of the plain-AppIntent design (see DiveIntents.swift):
+  the buttons run in the extension and cannot push ActivityKit updates, so the
+  system's post-intent re-render is what repaints the card, and the view has
+  to read the truth itself. The store is also simply more current than the
+  push: the app updates ContentState at most every 30 seconds, the store is
+  written the instant a button is tapped.
+*/
+private func resolvedDive(_ s: TripActivityAttributes.ContentState) -> TripActivityAttributes.ContentState {
+    var c = s
+    DiveTimerStore.pushDiveState(into: &c)
+    return c
+}
+
 private struct TripClock: View {
     let startedAt: Date
     var body: some View {
@@ -123,6 +140,7 @@ private struct TripClock: View {
 
 private struct LockScreenCard: View {
     let context: ActivityViewContext<TripActivityAttributes>
+    let dive: TripActivityAttributes.ContentState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -157,7 +175,7 @@ private struct LockScreenCard: View {
                 }
             }
 
-            DiveRow(state: context.state)
+            DiveRow(state: dive)
         }
         .padding(14)
     }
