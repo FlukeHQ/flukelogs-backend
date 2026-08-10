@@ -30,7 +30,7 @@ struct StartDiveIntent: LiveActivityIntent {
       can do is start or stop a dive timer on a trip already visible to anyone
       looking at the lock screen.
     */
-    static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+    static var authenticationPolicy: IntentAuthenticationPolicy { .alwaysAllowed }
 
     static var title: LocalizedStringResource = "Start dive"
     static var description = IntentDescription("Start timing a whale dive.")
@@ -60,7 +60,7 @@ struct SurfacedIntent: LiveActivityIntent {
       can do is start or stop a dive timer on a trip already visible to anyone
       looking at the lock screen.
     */
-    static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+    static var authenticationPolicy: IntentAuthenticationPolicy { .alwaysAllowed }
 
     static var title: LocalizedStringResource = "Surfaced"
     static var description = IntentDescription("The whale surfaced. Stop the dive timer and record the dive.")
@@ -90,7 +90,7 @@ struct CancelDiveIntent: LiveActivityIntent {
       can do is start or stop a dive timer on a trip already visible to anyone
       looking at the lock screen.
     */
-    static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+    static var authenticationPolicy: IntentAuthenticationPolicy { .alwaysAllowed }
 
     static var title: LocalizedStringResource = "Cancel dive timing"
     static var description = IntentDescription("Stop timing without recording a dive.")
