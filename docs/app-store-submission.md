@@ -83,16 +83,26 @@ whale watching,trip log,wildlife,sightings,boat,gps,marine,naturalist,ocean,logb
 
 ## 6. What's New
 
-### Version 1.2 (current submission)
+### Version 1.3 (current submission)
+
+> The surfacing chime now has a Surfaced button, so you can record the dive
+> right from the notification without unlocking.
+>
+> And when the boat comes back inside the harbor with a trip still running,
+> Flukelogs asks "Still logging whales?" right on the lock screen, with
+> buttons to keep going or end the trip.
+
+Note on scope: notification action buttons are the one lock screen
+interaction iOS allows third party apps without unlocking, which is why
+these two features arrived as notifications rather than more Live Activity
+buttons. The dock-return prompt only arms after the boat has genuinely been
+out (1.5 km from the dock), so it can never fire on departure. Nothing ends
+a trip automatically; both buttons are explicit crew choices.
+
+### Version 1.2
 
 > The dive timer buttons now work straight from the lock screen, without
 > asking for your passcode.
-
-Note on scope: one line, because one thing changed. 1.1's dive buttons
-rendered on the lock screen and then demanded Face ID, which defeated the
-point of putting them there. LiveActivityIntent lets an intent run from the
-card; `authenticationPolicy` separately decides whether the phone must be
-unlocked, and it defaults to requiring it. Nothing else in the binary moved.
 
 ### Version 1.1
 

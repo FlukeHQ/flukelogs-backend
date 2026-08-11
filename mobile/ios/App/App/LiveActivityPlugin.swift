@@ -94,3 +94,99 @@ public class LiveActivityPlugin: CAPPlugin {
         }
     }
 }
+
+/*
+  1.3: notification actions, the locked-phone front door.
+
+  iOS will not run a Live Activity button without unlock (see DiveIntents'
+  history), but it WILL run a notification action posted by the app, provided
+  the action does not set .authenticationRequired. So the plugin registers
+  two categories at load and owns the notification center delegate:
+
+  - FL_CHIME: the surfacing chime gains a Surfaced button, which records the
+    dive right from the locked screen.
+  - FL_STILL_LOGGING: the harbor fence prompt, with Still out and End trip.
+    The plugin only reports which button was tapped; the DECISION stays in
+    the web layer, so policy (like auto-end) can change over the wire with no
+    new binary and no review round.
+
+  The delegate also shows banners while the app is foregrounded, since a
+  fence prompt with the phone in hand is still worth seeing.
+*/
+extension LiveActivityPlugin: UNUserNotificationCenterDelegate {
+
+    static let chimeCategory = "FL_CHIME"
+    static let fenceCategory = "FL_STILL_LOGGING"
+    private static let fenceNoteId = "flukelogs-still-logging"
+
+    func registerNotificationCategories() {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        let surfaced = UNNotificationAction(identifier: "SURFACED", title: "Surfaced", options: [])
+        let chime = UNNotificationCategory(
+            identifier: Self.chimeCategory, actions: [surfaced], intentIdentifiers: [], options: [])
+        let stillOut = UNNotificationAction(identifier: "STILL_OUT", title: "Still out watching", options: [])
+        let endTrip = UNNotificationAction(identifier: "END_TRIP", title: "End the trip", options: [.destructive])
+        let fence = UNNotificationCategory(
+            identifier: Self.fenceCategory, actions: [stillOut, endTrip], intentIdentifiers: [], options: [])
+        center.setNotificationCategories([chime, fence])
+    }
+
+    @objc func promptStillLogging(_ call: CAPPluginCall) {
+        let content = UNMutableNotificationContent()
+        content.title = call.getString("title") ?? "Back at the dock?"
+        content.body = call.getString("body") ?? "Looks like the boat is in. Still logging whales?"
+        content.sound = .default
+        content.categoryIdentifier = Self.fenceCategory
+        if #available(iOS 15.0, *) { content.interruptionLevel = .timeSensitive }
+        let request = UNNotificationRequest(identifier: Self.fenceNoteId, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { err in
+            call.resolve(["posted": err == nil])
+        }
+    }
+
+    @objc func clearStillLogging(_ call: CAPPluginCall) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [Self.fenceNoteId])
+        center.removeDeliveredNotifications(withIdentifiers: [Self.fenceNoteId])
+        call.resolve()
+    }
+
+    public func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        NSLog("[Flukelogs] notification action: %@", response.actionIdentifier)
+        switch response.actionIdentifier {
+        case "SURFACED":
+            _ = DiveTimerStore.surfaced()
+            if #available(iOS 16.2, *) {
+                Task {
+                    for activity in Activity<TripActivityAttributes>.activities {
+                        var state = activity.content.state
+                        DiveTimerStore.pushDiveState(into: &state)
+                        await activity.update(ActivityContent(state: state, staleDate: nil))
+                    }
+                    completionHandler()
+                }
+                return
+            }
+        case "STILL_OUT":
+            notifyListeners("fencePrompt", data: ["answer": "still_out"])
+        case "END_TRIP":
+            notifyListeners("fencePrompt", data: ["answer": "end_trip"])
+        default:
+            break
+        }
+        completionHandler()
+    }
+
+    public func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
+    }
+}

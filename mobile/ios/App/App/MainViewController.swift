@@ -22,6 +22,7 @@
 
 #if DEBUG
 import ActivityKit
+import UserNotifications
 #endif
 import Capacitor
 import UIKit
@@ -32,7 +33,9 @@ class MainViewController: CAPBridgeViewController {
     // the time the page's JS runs.
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
-        bridge?.registerPluginInstance(LiveActivityPlugin())
+        let liveActivity = LiveActivityPlugin()
+        bridge?.registerPluginInstance(liveActivity)
+        liveActivity.registerNotificationCategories()
         // Registration fails silently if the plugin ever stops conforming to
         // CAPBridgedPlugin, and a silent failure here is exactly the bug this
         // file exists to prevent. One line, one os_log, worth keeping.
@@ -74,6 +77,14 @@ extension MainViewController {
                     content: ActivityContent(state: state, staleDate: nil)
                 )
                 NSLog("[FL_LA_TEST] test activity requested OK")
+                // And the fence prompt, so its buttons can be inspected on a
+                // simulator lock screen without a trip or a login.
+                if let plugin = bridge?.plugin(withName: "LiveActivity") as? LiveActivityPlugin {
+                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in
+                        let call = CAPPluginCall(callbackId: "fl-la-test", options: [:], success: { _, _ in }, error: { _ in })
+                        plugin.promptStillLogging(call!)
+                    }
+                }
             } catch {
                 NSLog("[FL_LA_TEST] activity request FAILED: %@", error.localizedDescription)
             }

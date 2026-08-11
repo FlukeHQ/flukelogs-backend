@@ -2516,6 +2516,7 @@
     startDurationTimer();
     startLiveBroadcast();
     flActivity.start();
+    flFence.reset();
     saveTrip();
     showScreen('screenLog');
     syncQrTile();
@@ -2576,6 +2577,80 @@
     here: GPS fixes land every couple of seconds but the card only needs a
     fresh line every thirty, and the timers on it tick by themselves.
   */
+  /*
+    The harbor fence, client side. Slater's design, 2026-08-11.
+
+    Armed only after the boat has genuinely been out (1.5 km from the learned
+    dock), so leaving the dock at the start of a trip can never fire it. When
+    an armed boat comes back inside 800 m with the trip still running, the
+    native layer posts a notification with Still out / End trip buttons,
+    which work from a locked phone because notification actions are the one
+    lock screen interaction iOS allows third parties without unlock.
+
+    PROMPT ONLY: nothing here ends a trip on its own. "End the trip" is the
+    crew's explicit tap and runs the normal end flow; "Still out" stands down
+    until the boat leaves the fence again. Auto-end on silence stays OFF
+    until the shadow reports have weeks of clean evidence, and turning it on
+    later is a change to THIS file, not a new binary.
+
+    The 800 m and 1.5 km numbers come from the backtest across all 37 usable
+    historical trips: one fence entry per trip, zero mid-trip dips, 8 to 10
+    minutes between entry and the crew's own End Trip tap.
+  */
+  const flFence = {
+    dock: null,
+    armed: false,
+    prompted: false,
+    _listening: false,
+    _plugin() {
+      try {
+        return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LiveActivity) || null;
+      } catch (e) { return null; }
+    },
+    reset() {
+      this.armed = false;
+      this.prompted = false;
+      const pl = this._plugin();
+      if (pl && typeof pl.clearStillLogging === 'function') pl.clearStillLogging().catch(() => {});
+    },
+    listen() {
+      if (this._listening) return;
+      const pl = this._plugin();
+      if (!pl || typeof pl.addListener !== 'function' || typeof pl.promptStillLogging !== 'function') return;
+      this._listening = true;
+      pl.addListener('fencePrompt', (ev) => {
+        const answer = ev && ev.answer;
+        if (answer === 'end_trip') {
+          // The crew's explicit tap from the notification; same flow as the
+          // End Trip button, minus the no-sightings confirm a locked phone
+          // cannot answer.
+          if (trip.startTime && !trip.endTime) endTrip();
+        } else if (answer === 'still_out') {
+          // Stand down until the boat genuinely leaves again.
+          this.armed = false;
+          this.prompted = false;
+        }
+      });
+    },
+    feed(lat, lng) {
+      if (!this.dock || !trip.startTime || trip.endTime) return;
+      const pl = this._plugin();
+      if (!pl || typeof pl.promptStillLogging !== 'function') return;
+      this.listen();
+      const d = haversineNM(lat, lng, this.dock.lat, this.dock.lng) * 1852;
+      if (d > 1500) {
+        this.armed = true;
+        this.prompted = false;
+      } else if (d < 800 && this.armed && !this.prompted) {
+        this.prompted = true;
+        pl.promptStillLogging({
+          title: 'Back at the dock?',
+          body: 'Looks like the boat is in. Still logging whales?',
+        }).catch(() => {});
+      }
+    },
+  };
+
   const flActivity = {
     _plugin() {
       try {
@@ -2662,6 +2737,7 @@
     });
     if (trip.liveId) livePendingPoints.push({ lat: newLat, lng: newLng, t: new Date().toISOString() });
     flActivity.position(newLat, newLng);
+    flFence.feed(newLat, newLng);
     document.getElementById('statGPS').textContent = fmtLatLng(newLat, newLng);
     document.getElementById('statDistance').textContent = trip.distanceNM.toFixed(2) + ' NM';
     saveTrip();
@@ -3155,6 +3231,7 @@
     stopDurationTimer();
     liveEnd();
     flActivity.end();
+    flFence.reset();
     document.getElementById('revDate').textContent =
       trip.startTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const ms = trip.endTime - trip.startTime;
@@ -4000,6 +4077,7 @@
         // the plugin ends any survivor first, and the original start time
         // keeps the trip clock honest.
         flActivity.start();
+    flFence.reset();
         renderSightingList();
         showScreen('screenLog');
         toast('Trip restored', 'success');
@@ -4574,6 +4652,7 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const body = await res.json();
       operatorConfig = body.operator || null;
+      flFence.dock = body.dock || null;
       applyGreeting(body.user && body.user.display_name);
       if (body.user && body.user.is_super_admin) {
         const diag = document.getElementById('viewportDiag');
