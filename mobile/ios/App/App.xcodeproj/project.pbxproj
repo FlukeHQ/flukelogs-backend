@@ -12,7 +12,6 @@
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		BBE580E7BF7AAF3196F1D19A /* TripActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 431C1F4FBE3D9D3371B12185 /* TripActivityAttributes.swift */; };
 		EC1170E10AAC69BA5DAA2812 /* DiveTimerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AC4F90AE6341DF0D49FD34F /* DiveTimerStore.swift */; };
-		AF15C596B859D84573116636 /* DiveIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FBDAA9EE0E6D4AEA374965A /* DiveIntents.swift */; };
 		A1B2C3D40002MAINVCBLD0002 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40001MAINVCREF0001 /* MainViewController.swift */; };
 		2335CD4E2B0637FB787A0D02 /* LiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA2EDFE0F1C0046B1AA5327 /* LiveActivityPlugin.swift */; };
 		7769C87FE89363EF89378F7A /* LiveActivityPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = DBBA24E99F30C55984AFBE23 /* LiveActivityPlugin.m */; };
@@ -327,7 +326,6 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				BBE580E7BF7AAF3196F1D19A /* TripActivityAttributes.swift in Sources */,
 				EC1170E10AAC69BA5DAA2812 /* DiveTimerStore.swift in Sources */,
-				AF15C596B859D84573116636 /* DiveIntents.swift in Sources */,
 				A1B2C3D40002MAINVCBLD0002 /* MainViewController.swift in Sources */,
 				2335CD4E2B0637FB787A0D02 /* LiveActivityPlugin.swift in Sources */,
 				7769C87FE89363EF89378F7A /* LiveActivityPlugin.m in Sources */,
