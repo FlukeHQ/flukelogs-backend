@@ -64,8 +64,36 @@ Flukesend login opens this app.
 
 ## Ship loop
 
-Edit, syntax check (`node --check` for API files; extract and check the inline
-script block for index.html), commit, push the working branch, wait for the
+Edit, then run the guards, then commit, push the working branch, wait for the
 Vercel preview to go READY, verify on the preview URL, open a PR, merge, then
 confirm production. Web changes reach the iOS app with no App Store review
 because the shell loads `server.url`.
+
+The guards, all three, every time. Each one exists because its bug reached
+production first:
+
+- `node --check` on any touched `api/*.js` (syntax only; it cannot see the
+  next two).
+- `node scripts/check-client-refs.mjs` catches functions called in the inline
+  scripts but defined nowhere. A block deletion took the FareHarbor booking
+  functions with it on 2026-08-07 and every login threw for three hours.
+- `node scripts/smoke-send-report.cjs` invokes the real Log Trip handler with
+  realistic payloads and asserts on the ROWS it writes, not just the status
+  code. The 2026-08-07 outage (17 hours, block-scoped const) is its reason
+  for existing; mutation tested, so a silent miss fails loudly.
+
+## Native (mobile/) facts that cost real time to learn
+
+- App-local Capacitor plugins are registered in code in
+  `App/MainViewController.swift`, never in `packageClassList`: `npx cap copy
+  ios` regenerates that file and strips hand-added entries. See
+  mobile/README.md.
+- iOS requires unlock to execute an intent from a third party Live Activity
+  button; there is no supported way around it (Apple engineer, forums thread
+  766780). 1.2's glance-to-confirm behavior is the ceiling. Research branch:
+  `fix/lock-screen-dive-buttons`.
+- Every new Xcode target defaults its deployment version to the current SDK;
+  the widget shipped at iOS 26.5 once. Check it on target creation.
+- Lock screen auth behavior must be tested by someone whose Face ID does NOT
+  match the phone, on a passcode device. The owner's face passes silently and
+  the simulator has no passcode, so both "validate" anything.
