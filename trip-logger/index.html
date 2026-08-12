@@ -1517,38 +1517,33 @@
       <p id="settingsName"></p>
     </div>
 
+    <!--
+      Branding lives in Flukesend now. This app used to take two more logo
+      uploads (dark-on-white and light-on-dark), which were copies of a thing
+      Flukesend already owns and drifted the moment either side changed.
+      Slater's call: configure branding once, where the guests see it; the
+      boat app reads it. Legacy uploads still render for operators who made
+      them, but nothing here edits logos anymore.
+    -->
     <details class="section section-collapsible">
       <summary>
         <div class="section-label">Branding</div>
         <span class="section-status" id="settingsBrandingStatus">&mdash;</span>
       </summary>
       <div class="section-body">
-        <div class="field">
-          <label>Logo — PDF (dark logo on white)</label>
-          <div class="logo-preview-row">
-            <img id="settingsLogoUrlPreview" class="logo-thumb pdf-bg empty" alt="">
-            <div class="logo-actions">
-              <button type="button" class="btn btn-outline" onclick="document.getElementById('settingsLogoUrlFile').click()">Upload new</button>
-            </div>
-          </div>
-          <input type="url" id="settingsLogoUrl" hidden>
-          <input type="file" id="settingsLogoUrlFile" accept="image/png,image/jpeg,image/webp" style="display:none;" onchange="handleLogoUpload(event, 'pdf', 'settingsLogoUrl', 'settingsLogoUrlPreview')">
-        </div>
+        <p class="settings-note">Your logo comes from Flukesend, so it only has to be set once. Change it there and it updates here.</p>
+        <a class="btn btn-outline" href="https://www.flukesend.com/branding" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;">Open Flukesend branding</a>
+      </div>
+    </details>
 
+    <details class="section section-collapsible">
+      <summary>
+        <div class="section-label">Harbor line</div>
+        <span class="section-status" id="settingsTaglineStatus">&mdash;</span>
+      </summary>
+      <div class="section-body">
         <div class="field">
-          <label>Logo — Email (light logo on dark)</label>
-          <div class="logo-preview-row">
-            <img id="settingsLogoUrlEmailPreview" class="logo-thumb email-bg empty" alt="">
-            <div class="logo-actions">
-              <button type="button" class="btn btn-outline" onclick="document.getElementById('settingsLogoUrlEmailFile').click()">Upload new</button>
-            </div>
-          </div>
-          <input type="url" id="settingsLogoUrlEmail" hidden>
-          <input type="file" id="settingsLogoUrlEmailFile" accept="image/png,image/jpeg,image/webp" style="display:none;" onchange="handleLogoUpload(event, 'email', 'settingsLogoUrlEmail', 'settingsLogoUrlEmailPreview')">
-        </div>
-
-        <div class="field">
-          <label>Harbor / Tagline <span style="color:var(--text-dim);font-weight:500;text-transform:none;letter-spacing:0;">(shown on the trip screen and report footers)</span></label>
+          <label>Shown on the trip screen and report footers</label>
           <input type="text" id="settingsTagline" placeholder="e.g. MOSS LANDING HARBOR, MONTEREY BAY">
         </div>
       </div>
@@ -3549,7 +3544,7 @@
     return {
       name:        o.name        || 'Flukelogs',
       tagline:     o.tagline     || '',
-      logoPdf:     o.logo_url    || null,
+      logoPdf:     o.light_logo  || null,
       websiteHost,
     };
   }
@@ -4600,7 +4595,7 @@
   // and an empty sighting dropdown would make painfully obvious.
   function shouldShowWelcome() {
     if (!operatorConfig) return false;
-    const basicsDone = !!operatorConfig.logo_url
+    const basicsDone = !!(operatorConfig.light_logo || operatorConfig.header_logo)
       && Array.isArray(operatorConfig.species_list)
       && operatorConfig.species_list.length > 0;
     return !basicsDone;
@@ -4634,8 +4629,8 @@
     const txt = document.getElementById('headerLogoText');
     const o = operatorConfig;
     if (img && txt) {
-      if (o && o.logo_url_email) {
-        img.src = o.logo_url_email;
+      if (o && o.header_logo) {
+        img.src = o.header_logo;
         img.alt = o.name || 'Operator logo';
         img.hidden = false; txt.hidden = true;
       } else if (o && o.name) {
@@ -4856,7 +4851,7 @@
         title: 'Logo uploaded',
         help: 'Shown on your public sightings widget.',
         required: false,
-        done: !!cfg.logo_url,
+        done: !!(cfg.light_logo || cfg.header_logo),
         focus: 'branding',
       },
       {
@@ -4883,7 +4878,7 @@
         // Not auto-detectable — we treat it as done once any other recommended
         // item is finished, since the captain will have visited Settings at
         // least once and seen the embed code by then. Soft signal, not exact.
-        done: !!(cfg.logo_url || cfg.logo_url_email || (Array.isArray(cfg.species_list) && cfg.species_list.length > 0)),
+        done: !!(cfg.light_logo || cfg.header_logo || (Array.isArray(cfg.species_list) && cfg.species_list.length > 0)),
         focus: 'widget',
       },
     ];
@@ -4939,7 +4934,7 @@
   // The argument matches the welcome-item .focus value.
   function focusSettingsSection(focus) {
     const map = {
-      branding:  { selector: 'details:has(#settingsLogoUrlPreview)' },
+      branding:  { selector: 'details:has(#settingsTagline)' },
       species:   { selector: 'details:has(#settingsSpeciesGroups)' },
       // The Public Widget section isn't collapsible — just scroll to the
       // embed-code copy button which is the actionable bit.
@@ -4969,12 +4964,8 @@
 
   function populateSettingsForm(cfg) {
     document.getElementById('settingsName').textContent       = cfg.name || '';
-    document.getElementById('settingsLogoUrl').value          = cfg.logo_url || '';
-    document.getElementById('settingsLogoUrlEmail').value     = cfg.logo_url_email || '';
     document.getElementById('settingsTagline').value          = cfg.tagline || '';
     renderSpeciesGroupEditor(cfg.species_list || []);
-    showLogoPreview('settingsLogoUrlPreview',      cfg.logo_url);
-    showLogoPreview('settingsLogoUrlEmailPreview', cfg.logo_url_email);
     document.getElementById('settingsShowMapOnWidget').checked = cfg.show_map_on_widget !== false;
     document.getElementById('settingsWidgetHeroFromSend').checked = cfg.widget_hero_from_send !== false;
     document.getElementById('settingsLiveWidget').checked = cfg.live_widget_enabled === true;
@@ -5014,13 +5005,12 @@
   function setSettingsStatusIndicators(cfg) {
     const br = document.getElementById('settingsBrandingStatus');
     if (br) {
-      const pdf = !!cfg.logo_url;
-      const eml = !!cfg.logo_url_email;
-      br.textContent = pdf && eml ? 'Both logos set'
-        : pdf ? 'PDF logo set'
-        : eml ? 'Email logo set'
-        : 'No logos set';
+      br.textContent = cfg.branding_source === 'flukesend' ? 'From Flukesend'
+        : cfg.branding_source === 'legacy' ? 'Legacy uploads'
+        : 'Set it in Flukesend';
     }
+    const tg = document.getElementById('settingsTaglineStatus');
+    if (tg) tg.textContent = cfg.tagline ? cfg.tagline : 'Not set';
     const wd = document.getElementById('settingsWidgetStatus');
     if (wd) {
       const bits = [];
@@ -5153,65 +5143,6 @@
     }
   }
 
-  function showLogoPreview(imgId, url) {
-    const img = document.getElementById(imgId);
-    if (!img) return;
-    // The thumbnail is always in the DOM now (collapsed-URL design). When a
-    // URL is set, fill it in and drop the dashed-empty placeholder styling;
-    // when it isn't, show the placeholder.
-    if (url) {
-      img.src = url;
-      img.classList.remove('empty');
-    } else {
-      img.removeAttribute('src');
-      img.classList.add('empty');
-    }
-  }
-
-
-  // File picker → POST base64 to /api/operator-logo-upload → fill the URL
-  // input + preview. Captain still has to hit Save Settings to commit the
-  // URL change to the operators row.
-  async function handleLogoUpload(evt, kind, urlInputId, previewId) {
-    const file = evt.target.files && evt.target.files[0];
-    evt.target.value = ''; // reset so picking the same file again still fires onchange
-    if (!file) return;
-
-    const allowed = ['image/png', 'image/jpeg', 'image/webp'];
-    if (!allowed.includes(file.type)) return toast('Logo must be PNG, JPEG, or WebP', 'error');
-    if (file.size > 2 * 1024 * 1024) return toast('Logo too large (max 2MB)', 'error');
-
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session) return sessionExpired();
-
-    const dataUrl = await new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(r.result);
-      r.onerror = () => reject(r.error);
-      r.readAsDataURL(file);
-    });
-    const data_base64 = String(dataUrl).split(',', 2)[1];
-
-    toast('Uploading logo…', 'success');
-
-    try {
-      const res = await fetch('/api/operator-logo-upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ kind, content_type: file.type, data_base64 }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error || 'HTTP ' + res.status);
-      document.getElementById(urlInputId).value = body.url;
-      showLogoPreview(previewId, body.url);
-      toast('Uploaded — hit Save Settings to apply', 'success');
-    } catch (err) {
-      toast('Upload failed: ' + (err.message || err), 'error');
-    }
-  }
 
   // Renders one row per species group: group-name input + comma-separated
   // species textarea + remove button. addSpeciesGroup appends a blank one.
@@ -5263,8 +5194,6 @@
     if (!session) { btn.disabled = false; btn.textContent = originalLabel; return sessionExpired(); }
 
     const body = {
-      logo_url:                document.getElementById('settingsLogoUrl').value.trim()      || null,
-      logo_url_email:          document.getElementById('settingsLogoUrlEmail').value.trim() || null,
       tagline:                 document.getElementById('settingsTagline').value.trim()      || null,
       species_list:            serializeSpeciesGroups(),
       show_map_on_widget:      document.getElementById('settingsShowMapOnWidget').checked,

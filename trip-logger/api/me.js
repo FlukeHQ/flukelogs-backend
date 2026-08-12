@@ -35,7 +35,7 @@ async function getRoster(operatorId) {
   const [boats, crew, branding] = await Promise.all([
     get(`boats?operator_id=eq.${operatorId}&select=id,name&order=sort_order.asc`),
     get(`crew_members?operator_id=eq.${operatorId}&select=id,name,roles,user_id&order=sort_order.asc`),
-    get(`branding?operator_id=eq.${operatorId}&select=trip_times&limit=1`),
+    get(`branding?operator_id=eq.${operatorId}&select=trip_times,logo_url&limit=1`),
   ]);
   return {
     boats: boats || [],
@@ -43,6 +43,9 @@ async function getRoster(operatorId) {
     trip_times: (branding && branding[0] && Array.isArray(branding[0].trip_times))
       ? branding[0].trip_times
       : [],
+    // The Flukesend branding logo, the source of truth since 2026-08-12.
+    // Branding is configured once, in Flukesend; this app only reads it.
+    flukesend_logo: (branding && branding[0] && branding[0].logo_url) || null,
   };
 }
 
@@ -110,7 +113,23 @@ module.exports = async function handler(req, res) {
       is_super_admin: isSuperAdmin,
       display_name: displayName,
     },
-    operator: publicOperatorView(operator),
+    operator: (() => {
+      /*
+        Logos resolve Flukesend-first. Operators used to upload two more
+        copies here (dark-on-white for guest PDFs, light-on-dark for the
+        header), which drifted from the Flukesend branding the moment either
+        side changed; Princess had pasted the identical URL into both apps by
+        hand, which is the tell that the second copy never earned its keep.
+        Legacy uploads still win where they exist so nothing changes visually
+        for operators who set them, and disappear from the UI either way.
+      */
+      const op = publicOperatorView(operator);
+      op.header_logo = roster.flukesend_logo || op.logo_url_email || null;
+      op.light_logo = op.logo_url || roster.flukesend_logo || null;
+      op.branding_source = roster.flukesend_logo ? 'flukesend'
+        : (op.logo_url || op.logo_url_email) ? 'legacy' : 'none';
+      return op;
+    })(),
     roster,
     /*
       The learned dock, for the harbor fence prompt. Same inference the
