@@ -1638,26 +1638,31 @@
     </div>
 
     <!--
-      The dock reminder, and a way to see it.
+      Notifications: the two alerts the app can send, and a way to see one of
+      them. Both are local, scheduled by the app; there is no push server.
 
-      When a trip is still running as the boat comes back inside the harbor,
-      the app asks whether you are still logging. Crews should be able to see
-      what that looks like before it happens for real at the end of a long
-      day, and App Review needs a way to exercise notification actions at a
-      desk, where no boat is moving. One button serves both.
-
-      Not hidden behind admin: it is a normal thing to want to try, and the
-      diagnostics block it used to live in is invisible to everyone who is
-      not a platform admin, which included the reviewer.
+      Grouped rather than left floating, Slater's call: a control that fires a
+      notification belongs with the explanation of what notifications this app
+      sends at all. The preview button is a genuine crew feature (meet the
+      end-of-day alert on purpose, at the dock, rather than for the first time
+      after twelve hours on the water) and it is what lets App Review exercise
+      notification actions at a desk where no boat is moving.
     -->
     <div class="app-links">
-      <div class="app-links-label">Dock reminder</div>
+      <div class="app-links-label">Notifications</div>
       <p class="app-links-note" style="margin-top:0;">
-        If a trip is still running when you get back to the harbor, Flukelogs asks
-        whether you are still out. Press and hold the alert to answer it without
+        <b>Surfacing chime.</b> Once you have timed a couple of dives, Flukelogs
+        learns the animal's rhythm and chimes a few seconds before they are likely
+        to come up. Press and hold the chime to mark them surfaced without
         unlocking the phone.
       </p>
-      <button class="btn btn-outline" type="button" onclick="testDockPrompt(this)">Show me the reminder</button>
+      <p class="app-links-note">
+        <b>Dock reminder.</b> If a trip is still running when you get back to the
+        harbor, the app asks whether you are still out. Press and hold to answer
+        it, or tap to open the app.
+      </p>
+      <button class="btn btn-outline" type="button" onclick="testDockPrompt(this)">Show me the dock reminder</button>
+      <p class="app-links-note">Sends the reminder to this phone in five seconds, so lock the screen to see how it really looks.</p>
     </div>
 
     <!-- Get the app. Below Save on purpose: a captain opens Settings to change
@@ -4215,7 +4220,7 @@
         body: 'Looks like the boat is in. Still logging whales?',
       }).catch(() => {});
       btn.disabled = false;
-      btn.textContent = 'Show me the reminder';
+      btn.textContent = 'Show me the dock reminder';
     }, 5000);
   }
 
