@@ -1668,6 +1668,10 @@
       <div class="app-links-label">Live Activity diagnostics</div>
       <pre id="viewportDiagOut" style="font:11px/1.6 ui-monospace,Menlo,monospace;color:var(--text-muted);white-space:pre-wrap;margin:8px 0 0;"></pre>
       <button class="btn btn-outline" type="button" onclick="renderViewportDiag()" style="margin-top:10px;">Refresh readings</button>
+      <!-- Field testing without the USB launch dance: five seconds is enough
+           time to lock the phone, which is the state the prompt exists for.
+           Admin only, like everything in this block. -->
+      <button class="btn btn-outline" type="button" onclick="testDockPrompt(this)" style="margin-top:10px;">Send test dock prompt (5s)</button>
     </div>
   </div>
 
@@ -4143,6 +4147,25 @@
     is the screen", and in this webview they disagree. Printed together, on
     the phone that has the problem.
   */
+  function testDockPrompt(btn) {
+    const pl = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LiveActivity) || null;
+    if (!pl || typeof pl.promptStillLogging !== 'function') {
+      toast('This build has no fence plugin (needs 1.3)', 'error');
+      return;
+    }
+    flFence.listen();
+    btn.disabled = true;
+    btn.textContent = 'Lock the phone now...';
+    setTimeout(() => {
+      pl.promptStillLogging({
+        title: 'Back at the dock?',
+        body: 'Looks like the boat is in. Still logging whales?',
+      }).catch(() => {});
+      btn.disabled = false;
+      btn.textContent = 'Send test dock prompt (5s)';
+    }, 5000);
+  }
+
   function renderViewportDiag() {
     const out = document.getElementById('viewportDiagOut');
     if (!out) return;
