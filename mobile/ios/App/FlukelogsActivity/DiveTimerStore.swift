@@ -108,6 +108,12 @@ enum DiveTimerStore {
         // No availability guard: interruptionLevel arrived in iOS 15 and both
         // targets are now 15.0 or higher (app 15.0, extension 16.2).
         content.interruptionLevel = .timeSensitive
+        // The chime carries a Surfaced button (category wired in the plugin).
+        // Notification actions without .authenticationRequired are the one
+        // lock screen interaction iOS allows third parties without unlock,
+        // so this is where locked dive timing actually lives; the card's
+        // buttons stay glance-to-confirm, which is their ceiling.
+        content.categoryIdentifier = "FL_CHIME"
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
         let request = UNNotificationRequest(identifier: chimeId, content: content, trigger: trigger)
         UNUserNotificationCenter.current().add(request)

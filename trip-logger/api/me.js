@@ -46,6 +46,30 @@ async function getRoster(operatorId) {
   };
 }
 
+/*
+  The learned dock via the operator_dock RPC. Null on any failure or before
+  three trips exist; the fence must never break login, so this cannot throw.
+*/
+async function learnedDock(operatorId) {
+  try {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SECRET_KEY;
+    if (!url || !key) return null;
+    const r = await fetch(`${url}/rest/v1/rpc/operator_dock`, {
+      method: 'POST',
+      headers: { 'apikey': key, 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ op: operatorId }),
+    });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    const d = Array.isArray(rows) ? rows[0] : rows;
+    if (!d || !Number.isFinite(+d.lat) || (d.trips || 0) < 3) return null;
+    return { lat: +d.lat, lng: +d.lng };
+  } catch {
+    return null;
+  }
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -59,10 +83,11 @@ module.exports = async function handler(req, res) {
   if (!auth) return;
 
   const { user, operatorId, isSuperAdmin } = auth;
-  const [operator, roster, consented] = await Promise.all([
+  const [operator, roster, consented, dock] = await Promise.all([
     operatorId ? getOperator(operatorId) : null,
     operatorId ? getRoster(operatorId) : { boats: [], crew: [], trip_times: [] },
     hasConsented(user.id),
+    operatorId ? learnedDock(operatorId) : null,
   ]);
 
   /*
@@ -87,6 +112,14 @@ module.exports = async function handler(req, res) {
     },
     operator: publicOperatorView(operator),
     roster,
+    /*
+      The learned dock, for the harbor fence prompt. Same inference the
+      parked-broadcast rule uses (operator_dock, 3+ trips required), so an
+      operator who has never sailed gets null and the fence simply stays
+      unarmed, which honors the zero-setup rule: nobody configures anything,
+      protection appears once the data exists.
+    */
+    dock,
     // The crew tracking disclosure. accepted:false makes the app show the
     // consent gate before anything else; the lookup fails open, so a broken
     // read reads as accepted rather than locking a captain out.
