@@ -20,10 +20,6 @@
 //  a generated file at all. Run `cap copy` as often as you like.
 //
 
-#if DEBUG
-import ActivityKit
-import UserNotifications
-#endif
 import Capacitor
 import UIKit
 
@@ -43,65 +39,3 @@ class MainViewController: CAPBridgeViewController {
               bridge?.plugin(withName: "LiveActivity") != nil ? "YES" : "NO")
     }
 }
-
-/*
-  Debug-only harness for the Live Activity, used to reproduce the lock screen
-  passcode bug of 2026-08-09 without needing a signed-in session: the activity
-  and its buttons are pure ActivityKit and never required a login, only the
-  path that normally starts them did.
-
-  DEBUG + environment gated twice over, so it cannot exist in a release build
-  and cannot fire in a debug build unless launched with FL_LA_TEST=1.
-*/
-#if DEBUG
-extension MainViewController {
-    override public func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        guard ProcessInfo.processInfo.environment["FL_LA_TEST"] == "1" else { return }
-        // The store as this launch sees it. Comparing this line before and
-        // after a locked tap answers "did the intent run at all" without any
-        // repaint working.
-        let d = UserDefaults(suiteName: DiveTimerStore.appGroup)
-        NSLog("[FL_LA_TEST] store: dive_started_at=%@ history=%@",
-              String(describing: d?.object(forKey: "dive_started_at")),
-              String(describing: d?.array(forKey: "dive_history_seconds")))
-        if #available(iOS 16.2, *) {
-            let attributes = TripActivityAttributes(
-                tripStartedAt: Date(),
-                boatName: "Test Boat"
-            )
-            var state = TripActivityAttributes.ContentState(
-                positionText: "N 36 36.000 W 121 54.000",
-                distanceNm: 1.2,
-                diveStartedAt: nil,
-                expectedSurfacing: nil,
-                lastDiveSeconds: nil
-            )
-            DiveTimerStore.pushDiveState(into: &state)
-            do {
-                _ = try Activity<TripActivityAttributes>.request(
-                    attributes: attributes,
-                    content: ActivityContent(state: state, staleDate: nil)
-                )
-                NSLog("[FL_LA_TEST] test activity requested OK")
-                // And the fence prompt, so its buttons can be inspected on a
-                // simulator lock screen without a trip or a login.
-                if let plugin = bridge?.plugin(withName: "LiveActivity") as? LiveActivityPlugin {
-                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in
-                        // Eight seconds: enough time to lock the phone, so the
-                        // prompt lands ON the locked screen the way a real
-                        // fence crossing would, instead of as a foreground
-                        // banner while the tester is still holding the phone.
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
-                            let call = CAPPluginCall(callbackId: "fl-la-test", options: [:], success: { _, _ in }, error: { _ in })
-                            plugin.promptStillLogging(call!)
-                        }
-                    }
-                }
-            } catch {
-                NSLog("[FL_LA_TEST] activity request FAILED: %@", error.localizedDescription)
-            }
-        }
-    }
-}
-#endif
