@@ -2062,8 +2062,11 @@
       </div>
     </details>
 
-    <button class="btn btn-outline" onclick="startNewTrip()">Start New Trip</button>
-    <button class="btn btn-danger" onclick="discardTrip()">Discard Trip</button>
+    <!-- Both hidden the moment a trip logs: a logged trip has nothing left
+         to start or discard, and the app returns itself to Start Trip. Two
+         exits from a finished screen was the confusion Slater named. -->
+    <button class="btn btn-outline" id="btnStartNew" onclick="startNewTrip()">Start New Trip</button>
+    <button class="btn btn-danger" id="btnDiscard" onclick="discardTrip()">Discard Trip</button>
   </div>
 
 </div>
@@ -3352,6 +3355,33 @@
       : '✓ Trip logged — ready for Flukesend.';
     summary.style.display = 'block';
     document.getElementById('loggedHandoff').style.display = 'block';
+
+    /*
+      A logged trip goes home by itself.
+
+      Before this the crew landed on a finished review screen holding two
+      buttons, Start New Trip and Discard Trip, and had to pick one to get
+      back to Start Trip. Both were wrong: nothing needed starting yet, and
+      Discard on an already logged trip reads like it undoes the log. Slater
+      named it in field testing. Now the screen says what happened, waits
+      long enough to be read, and returns itself.
+
+      The wait is deliberately long enough to read the species line, and the
+      toast repeats it on the start screen so nothing is missed by a captain
+      who looked away.
+    */
+    const startNew = document.getElementById('btnStartNew');
+    const discard = document.getElementById('btnDiscard');
+    if (startNew) startNew.style.display = 'none';
+    if (discard) discard.style.display = 'none';
+    setTimeout(() => {
+      // Only if they have not already moved on themselves.
+      if (document.querySelector('.screen.active')?.id === 'screenReview') {
+        resetTripState();
+        showScreen('screenStart');
+        toast(summary.textContent.replace('✓ ', ''), 'success');
+      }
+    }, 3500);
   }
 
   // Shared downscale (max 1200px wide, jpeg 0.75) used by the trip photo and
@@ -3941,6 +3971,10 @@
     document.getElementById('btnSend').style.background = '';
     document.getElementById('loggedSummary').style.display = 'none';
     document.getElementById('loggedHandoff').style.display = 'none';
+    const bsn = document.getElementById('btnStartNew');
+    const bd = document.getElementById('btnDiscard');
+    if (bsn) bsn.style.display = '';
+    if (bd) bd.style.display = '';
     sentTripId = null;
     showScreen('screenStart');
     // Re-pull today's bookings so the next slot of the day (if any) drives
