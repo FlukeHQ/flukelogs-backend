@@ -22,6 +22,33 @@ const path = require('path');
 
 const DEFAULT_SLUG = 'enocean';
 
+/*
+  The operator's Flukesend branding, for the widget's visible surface.
+
+  The widget is the platform's most guest-facing thing: it lives embedded on
+  the operator's own website. Until 2026-08-12 the operator's brand appeared
+  only in the social share meta tags, never anywhere a guest's eye lands; the
+  visible widget was entirely Flukelogs' palette. Same single source of truth
+  as the app header: branding is configured once, in Flukesend, and read here.
+*/
+async function loadBrandingRow(operatorId) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SECRET_KEY;
+  if (!url || !key || !operatorId) return null;
+  try {
+    const res = await fetch(
+      `${url}/rest/v1/branding?operator_id=eq.${operatorId}&select=logo_url,brand_color,accent_color&limit=1`,
+      { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
+    );
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return rows[0] || null;
+  } catch (e) {
+    console.error('sightings widget: branding lookup failed:', e.message);
+    return null;
+  }
+}
+
 async function loadOperatorRow(slug) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY;
@@ -231,8 +258,28 @@ module.exports = async function handler(req, res) {
           // a customer, which is exactly what a hardcoded default did.
           booking_url: operator.booking_url || null,
           home_port: homePort,
+          /*
+            Brand accent and logo, filled in below. The widget applies the
+            accent only when it clears a contrast floor against its dark
+            surface, so a color picked for a white email header cannot make
+            a button unreadable; the logo shows on the standalone page only,
+            because the embed already sits under the operator's own site
+            header and a second logo is clutter, not branding.
+          */
+          brand_accent: null,
+          brand_logo: null,
         }
-      : { id: null, slug, show_map_on_widget: true, widget_host_url: null, widget_standalone_url: null, booking_url: null, home_port: null };
+      : { id: null, slug, show_map_on_widget: true, widget_host_url: null, widget_standalone_url: null, booking_url: null, home_port: null, brand_accent: null, brand_logo: null };
+
+    if (operator) {
+      const branding = await loadBrandingRow(operator.id);
+      if (branding) {
+        opConfig.brand_accent = branding.accent_color || branding.brand_color || null;
+        opConfig.brand_logo = branding.logo_url || operator.logo_url_email || null;
+      } else {
+        opConfig.brand_logo = operator.logo_url_email || null;
+      }
+    }
 
     // Per-trip enrichment only when both the operator AND the trip resolve
     // — otherwise fall through to the generic operator-level OG.

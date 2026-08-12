@@ -712,6 +712,13 @@
   <!-- The most recent trip's photo. A visitor deciding whether to book is
        persuaded by the animal, not by a table; this is the operator's own
        proof, dated, from a real trip. Hidden until a photo exists. -->
+  <!-- Operator logo, standalone page only: the embed already sits under the
+       operator's own site header, where a second logo is clutter. Filled by
+       applyOperatorBrand() when this page is the top window. -->
+  <div id="brandBar" style="display:none;padding:14px 16px 2px;">
+    <img id="brandBarLogo" alt="" style="max-height:30px;max-width:220px;display:block;">
+  </div>
+
   <figure class="hero" id="hero" style="display:none;">
     <img id="hero-img" alt="" loading="eager">
     <figcaption class="hero-cap">
@@ -799,6 +806,39 @@ const FEED_LIMIT = 100;
 // state instead of falling through to an unscoped query (which would mix
 // every operator's sightings into the embed).
 const OP = (typeof window !== 'undefined' && window.__OP_CONFIG) || {};
+
+/*
+  Operator branding on the widget's visible surface, from Flukesend branding
+  via the server config. Two rules keep it safe on a surface we do not
+  control the surroundings of:
+
+  - The accent replaces --teal only when it clears a 3:1 contrast ratio
+    against the widget's dark background (WCAG's floor for UI components).
+    A brand color chosen for a white email header can be near-black; shipping
+    it here would make the live dot and active states invisible, so a failing
+    color keeps the default teal instead. Legibility beats branding.
+  - The logo shows only when this page IS the page (top window). Inside an
+    embed the operator's site header is right above us already.
+*/
+(function applyOperatorBrand() {
+  try {
+    const accent = OP.brand_accent;
+    if (accent && /^#[0-9a-fA-F]{6}$/.test(accent)) {
+      const lum = (hex) => {
+        const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+          .map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+      };
+      const ratio = (lum(accent) + 0.05) / (lum('#0a0c0e') + 0.05);
+      if (ratio >= 3) document.documentElement.style.setProperty('--teal', accent);
+    }
+    if (OP.brand_logo && window.self === window.top) {
+      const bar = document.getElementById('brandBar');
+      const img = document.getElementById('brandBarLogo');
+      if (bar && img) { img.src = OP.brand_logo; bar.style.display = ''; }
+    }
+  } catch (e) { /* branding must never break the widget */ }
+})();
 const OPERATOR_ID = OP.id || null;
 /*
   Where Book Now sends a guest, from the operator's own record.
