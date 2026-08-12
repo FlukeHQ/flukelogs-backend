@@ -293,6 +293,9 @@
       pointer-events: none;
     }
     .section > * { position: relative; }
+    .section.section-readonly { display: flex; align-items: baseline; justify-content: space-between; }
+    .settings-note { font-size: 12.5px; line-height: 1.55; color: var(--text-muted); margin: 0 0 10px; }
+    .settings-note b { color: var(--text); font-weight: 600; }
     .section-label {
       font-size: 10px;
       font-weight: 700;
@@ -1499,12 +1502,13 @@
 
   <!-- Settings (operator-editable subset of operator config) -->
   <div class="screen" id="screenSettings">
-    <div class="section">
+    <!-- The operator name is read only and set in Flukesend, so it was a
+         disabled text box holding a value nobody can change, forced open at
+         the top of the screen. It is a fact, not a field: it now reads as the
+         row's own status, the way every other section here works. -->
+    <div class="section section-readonly">
       <div class="section-label">Operator</div>
-      <div class="field">
-        <label>Name</label>
-        <input type="text" id="settingsName" disabled style="opacity:0.6;">
-      </div>
+      <span class="section-status" id="settingsName"></span>
     </div>
 
     <details class="section section-collapsible">
@@ -1627,51 +1631,51 @@
          the consent gate, permanently findable afterwards: a disclosure that
          can only be read once, at sign in, under a deadline of wanting to use
          the app, is not really readable at all. -->
-    <div class="app-links">
-      <div class="app-links-label">What this app records</div>
+    <details class="section section-collapsible">
+      <summary>
+        <div class="section-label">What this app records</div>
+        <span class="section-status">Location, during trips only</span>
+      </summary>
+      <div class="section-body">
       <p class="app-links-note" style="margin-top:0;">
         Your location is recorded <b>only between Start Trip and End Trip</b>. Nothing runs at any other time.
         <b>End the trip before you leave the boat.</b> If you forget, it keeps recording, including your drive home.
         Guests see your boat's position on a delay, rounded to about a kilometre; they never see exactly where you are.
       </p>
       <a class="btn btn-outline" style="margin-top:10px;" href="/privacy.html" target="_blank" rel="noopener">Read the full privacy policy</a>
-    </div>
+      </div>
+    </details>
 
     <!--
-      Notifications: the two alerts the app can send, and a way to see one of
-      them. Both are local, scheduled by the app; there is no push server.
-
-      Grouped rather than left floating, Slater's call: a control that fires a
-      notification belongs with the explanation of what notifications this app
-      sends at all. The preview button is a genuine crew feature (meet the
-      end-of-day alert on purpose, at the dock, rather than for the first time
-      after twelve hours on the water) and it is what lets App Review exercise
-      notification actions at a desk where no boat is moving.
+      Notifications. A row like everything else here, and the copy cut to one
+      line per alert: Slater's read was that this screen had turned into
+      documentation, which is not what a settings screen is for. The detail
+      about learned rhythm lives in the release note where it sells the
+      feature; here it only needs to say what the alert is and how to answer
+      it.
     -->
-    <div class="app-links">
-      <div class="app-links-label">Notifications</div>
-      <p class="app-links-note" style="margin-top:0;">
-        <b>Surfacing chime.</b> Once you have timed a couple of dives, Flukelogs
-        learns the animal's rhythm and chimes a few seconds before they are likely
-        to come up. Press and hold the chime to mark them surfaced without
-        unlocking the phone.
-      </p>
-      <p class="app-links-note">
-        <b>Dock reminder.</b> If a trip is still running when you get back to the
-        harbor, the app asks whether you are still out. Press and hold to answer
-        it, or tap to open the app.
-      </p>
-      <button class="btn btn-outline" type="button" onclick="testDockPrompt(this)">Show me the dock reminder</button>
-      <p class="app-links-note">Sends the reminder to this phone in five seconds, so lock the screen to see how it really looks.</p>
-    </div>
+    <details class="section section-collapsible">
+      <summary>
+        <div class="section-label">Notifications</div>
+        <span class="section-status">Chime and dock reminder</span>
+      </summary>
+      <div class="section-body">
+        <p class="settings-note"><b>Surfacing chime.</b> Sounds just before a timed whale is likely to come up.</p>
+        <p class="settings-note"><b>Dock reminder.</b> Asks if you are still out when a trip is still running at the harbor.</p>
+        <p class="settings-note">Press and hold either alert to answer it without unlocking the phone.</p>
+        <button class="btn btn-outline" type="button" onclick="testDockPrompt(this)">Show me the dock reminder</button>
+      </div>
+    </details>
 
-    <!-- Get the app. Below Save on purpose: a captain opens Settings to change
-         something, not to install anything. This is for the moment a new crew
-         member is handed a phone and asked where the app comes from, so it
-         wants to be findable, not prominent. Both links open outside the app. -->
-    <div class="app-links">
-      <div class="app-links-label">Get the app on another phone</div>
-      <div class="app-links-row">
+    <!-- Get the app: a row, because a captain opens Settings to change
+         something, not to install anything. -->
+    <details class="section section-collapsible">
+      <summary>
+        <div class="section-label">Get the app</div>
+        <span class="section-status">iPhone and Android</span>
+      </summary>
+      <div class="section-body">
+        <div class="app-links-row">
         <a class="app-link" href="https://apps.apple.com/us/app/flukelogs/id6786810308" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.4 12.8c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.8-.8-3-.8-1.5 0-2.9.9-3.7 2.3-1.6 2.7-.4 6.8 1.1 9 .8 1.1 1.7 2.3 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2.1-1.1 2.8-2.2.9-1.3 1.3-2.5 1.3-2.6 0 0-2.5-1-2.5-3.6zM14.2 5.9c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.8 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.8-1.3z"/></svg>
           <span><b>iPhone or iPad</b><em>App Store</em></span>
@@ -1682,7 +1686,9 @@
         </a>
       </div>
       <p class="app-links-note">Android will ask you to allow installs from your browser. That prompt is normal for an app outside the Play Store.</p>
-    </div>
+
+      </div>
+    </details>
 
     <!--
       Live Activity diagnostics. Hidden for everyone except the platform
@@ -4951,7 +4957,7 @@
   }
 
   function populateSettingsForm(cfg) {
-    document.getElementById('settingsName').value             = cfg.name || '';
+    document.getElementById('settingsName').textContent       = cfg.name || '';
     document.getElementById('settingsLogoUrl').value          = cfg.logo_url || '';
     document.getElementById('settingsLogoUrlEmail').value     = cfg.logo_url_email || '';
     document.getElementById('settingsTagline').value          = cfg.tagline || '';
