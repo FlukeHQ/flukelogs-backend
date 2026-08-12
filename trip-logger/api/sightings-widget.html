@@ -187,29 +187,6 @@
   .fm-grid.no-map { grid-template-columns: 1fr; }
   .fm-grid.no-map .legend-col { max-width: 480px; }
 
-  /* ── Hero (booking-first proof shot) ────────────────────────────── */
-  .hero {
-    position: relative;
-    margin: 0 0 18px;
-    border-radius: 14px;
-    overflow: hidden;
-    background: var(--panel, #111);
-    aspect-ratio: 16 / 9;
-  }
-  .hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .hero-cap {
-    position: absolute; left: 0; right: 0; bottom: 0;
-    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
-    padding: 34px 16px 14px;
-    background: linear-gradient(to top, rgba(0,0,0,.78), rgba(0,0,0,0));
-  }
-  .hero-species { font-size: 17px; font-weight: 600; color: #fff; letter-spacing: .01em; }
-  .hero-when {
-    font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
-    color: rgba(255,255,255,.72);
-  }
-  @media (max-width: 700px) { .hero { aspect-ratio: 4 / 3; margin-bottom: 14px; } }
-
   /* Likelihood bar behind each species row: the row IS the statistic. */
   .legend-row { position: relative; }
   .legend-bar {
@@ -712,13 +689,12 @@
   <!-- The most recent trip's photo. A visitor deciding whether to book is
        persuaded by the animal, not by a table; this is the operator's own
        proof, dated, from a real trip. Hidden until a photo exists. -->
-  <figure class="hero" id="hero" style="display:none;">
-    <img id="hero-img" alt="" loading="eager">
-    <figcaption class="hero-cap">
-      <span class="hero-species" id="hero-species"></span>
-      <span class="hero-when" id="hero-when"></span>
-    </figcaption>
-  </figure>
+  <!-- Operator logo, standalone page only: the embed already sits under the
+       operator's own site header, where a second logo is clutter. Filled by
+       applyOperatorBrand() when this page is the top window. -->
+  <div id="brandBar" style="display:none;padding:14px 16px 2px;">
+    <img id="brandBarLogo" alt="" style="max-height:30px;max-width:220px;display:block;">
+  </div>
 
   <!-- What's out there now -->
   <div class="now-banner" id="now-banner" style="display:none;">
@@ -799,6 +775,95 @@ const FEED_LIMIT = 100;
 // state instead of falling through to an unscoped query (which would mix
 // every operator's sightings into the embed).
 const OP = (typeof window !== 'undefined' && window.__OP_CONFIG) || {};
+
+/*
+  Operator branding on the widget's visible surface, from Flukesend branding
+  via the server config. Two rules keep it safe on a surface we do not
+  control the surroundings of:
+
+  - The accent replaces --teal only when it clears a 3:1 contrast ratio
+    against the widget's dark background (WCAG's floor for UI components).
+    A brand color chosen for a white email header can be near-black; shipping
+    it here would make the live dot and active states invisible, so a failing
+    color keeps the default teal instead. Legibility beats branding.
+  - The logo shows only when this page IS the page (top window). Inside an
+    embed the operator's site header is right above us already.
+*/
+(function applyOperatorBrand() {
+  try {
+    /*
+      The first version only swapped the accent, gated on contrast, and both
+      real operators failed the gate: Enocean's brand is #000000 and
+      Princess's is #2c2f6d, colors chosen for white email headers. The gate
+      worked and the feature vanished; Slater's verdict was "this really
+      just added a logo." So instead of accept-or-discard:
+
+      - The whole dark surface takes the brand's HUE at the widget's own
+        proven lightness steps. Princess reads navy-washed; structure and
+        legibility are untouched because only the hue moves.
+      - A too-dark accent is LIFTED to the first lightness that clears 3:1
+        against the surface, instead of being thrown away. Their hue, made
+        readable.
+      - A hueless brand (black, white, grey) changes nothing: there is no
+        hue to borrow, and inventing one would be someone else's brand.
+    */
+    const hexToHsl = (hex) => {
+      const r = parseInt(hex.slice(1, 3), 16) / 255;
+      const g = parseInt(hex.slice(3, 5), 16) / 255;
+      const b = parseInt(hex.slice(5, 7), 16) / 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+      let h = 0;
+      if (d) {
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60;
+        else if (max === g) h = ((b - r) / d + 2) * 60;
+        else h = ((r - g) / d + 4) * 60;
+      }
+      const l = (max + min) / 2;
+      const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+      return { h, s: sat, l };
+    };
+    const hsl = (h, s, l) => `hsl(${h.toFixed(0)} ${(s * 100).toFixed(0)}% ${(l * 100).toFixed(0)}%)`;
+    const lum = (r, g, b) => {
+      const c = [r, g, b].map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    };
+    const hslToRgb = (h, s, l) => {
+      const a = s * Math.min(l, 1 - l);
+      const f = (n) => {
+        const k = (n + h / 30) % 12;
+        return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+      };
+      return [f(0), f(8), f(4)];
+    };
+
+    const raw = OP.brand_accent;
+    if (raw && /^#[0-9a-fA-F]{6}$/.test(raw)) {
+      const c = hexToHsl(raw);
+      if (c.s >= 0.12) {
+        // Surfaces: the brand hue at the widget's own dark lightness steps.
+        const S = Math.min(0.28, Math.max(0.16, c.s * 0.5));
+        const root = document.documentElement.style;
+        root.setProperty('--ink',   hsl(c.h, S, 0.045));
+        root.setProperty('--ink-2', hsl(c.h, S, 0.065));
+        root.setProperty('--ink-3', hsl(c.h, S, 0.095));
+        root.setProperty('--ink-4', hsl(c.h, S, 0.135));
+        // Accent: same hue, lifted until it clears 3:1 against the surface.
+        const bgLum = lum(...hslToRgb(c.h, S, 0.045));
+        let L = Math.max(c.l, 0.35);
+        let As = Math.max(c.s, 0.35);
+        for (; L <= 0.8; L += 0.05) {
+          if ((lum(...hslToRgb(c.h, As, L)) + 0.05) / (bgLum + 0.05) >= 3) break;
+        }
+        root.setProperty('--teal', hsl(c.h, As, Math.min(L, 0.8)));
+      }
+    }
+    if (OP.brand_logo && window.self === window.top) {
+      const bar = document.getElementById('brandBar');
+      const img = document.getElementById('brandBarLogo');
+      if (bar && img) { img.src = OP.brand_logo; bar.style.display = ''; }
+    }
+  } catch (e) { /* branding must never break the widget */ }
+})();
 const OPERATOR_ID = OP.id || null;
 /*
   Where Book Now sends a guest, from the operator's own record.
@@ -1519,32 +1584,6 @@ function tallyBySpecies(sightings) {
     if (s.lat && s.lng) { tally[s.species].lat = s.lat; tally[s.species].lng = s.lng; }
   });
   return Object.entries(tally).sort((a, b) => b[1].count - a[1].count);
-}
-
-// The hero: newest trip that has a photo, captioned with what was seen that
-// day. Silent no-op when the operator has no galleries yet, so a new tenant
-// simply renders the widget it has today.
-function renderHero(data) {
-  const fig = document.getElementById('hero');
-  if (!fig) return;
-  const trips = groupByTrip(data);
-  for (const [tripKey, sightings] of trips) {
-    const photos = tripPhotosByTrip.get(tripKey) || [];
-    if (!photos.length) continue;
-    const img = document.getElementById('hero-img');
-    // Same render endpoint the galleries use, sized for a wide hero and
-    // contained so a whale is never cropped out of its own photo.
-    img.src = thumbUrl(photos[0].photo_url, 1400).replace('&resize=cover', '&resize=contain');
-    const tally = tallyBySpecies(sightings);
-    const names = tally.map(([n]) => n);
-    img.alt = names.length ? `${names[0]} seen on this trip` : 'Recent trip photo';
-    document.getElementById('hero-species').textContent =
-      names.length > 2 ? `${names[0]}, ${names[1]} & more` : names.join(' & ') || 'On the water';
-    document.getElementById('hero-when').textContent = fmtDate(sightings[0].trip_date);
-    fig.style.display = '';
-    return;
-  }
-  fig.style.display = 'none';
 }
 
 // ── Now banner ────────────────────────────────────────────────────────────────
@@ -2797,7 +2836,6 @@ function applyInitialTripFromUrl() {
     const first = await loadWidgetData();
     feedNextBefore = first && first.has_more ? first.next_before : null;
     setFeedMoreVisible(!!feedNextBefore);
-    renderHero(allData);
     renderNowBanner(allData);
     renderLegend(allData);
     renderSegmentedRail(allData);
