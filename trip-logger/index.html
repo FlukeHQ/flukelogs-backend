@@ -2601,6 +2601,15 @@
     dock: null,
     armed: false,
     prompted: false,
+    // An ignored prompt asks again, patiently: every 15 minutes while the
+    // boat stays inside the fence with the trip still running, three asks
+    // and then silence. Slater's catch in field testing: one dismissed
+    // notification meant the question never came back, which quietly
+    // recreates the forgotten-trip problem the fence exists to solve. An
+    // ANSWERED prompt never re-asks; Still out stands the fence down until
+    // the boat genuinely leaves again.
+    promptedAt: 0,
+    promptCount: 0,
     _listening: false,
     _plugin() {
       try {
@@ -2610,6 +2619,8 @@
     reset() {
       this.armed = false;
       this.prompted = false;
+      this.promptedAt = 0;
+      this.promptCount = 0;
       const pl = this._plugin();
       if (pl && typeof pl.clearStillLogging === 'function') pl.clearStillLogging().catch(() => {});
     },
@@ -2653,12 +2664,20 @@
       if (d > 1500) {
         this.armed = true;
         this.prompted = false;
-      } else if (d < 800 && this.armed && !this.prompted) {
-        this.prompted = true;
-        pl.promptStillLogging({
-          title: 'Back at the dock?',
-          body: 'Looks like the boat is in. Still logging whales?',
-        }).catch(() => {});
+        this.promptedAt = 0;
+        this.promptCount = 0;
+      } else if (d < 800 && this.armed) {
+        const canAsk = !this.prompted ||
+          (this.promptCount < 3 && Date.now() - this.promptedAt > 15 * 60 * 1000);
+        if (canAsk) {
+          this.prompted = true;
+          this.promptedAt = Date.now();
+          this.promptCount++;
+          pl.promptStillLogging({
+            title: 'Back at the dock?',
+            body: 'Looks like the boat is in. Still logging whales?',
+          }).catch(() => {});
+        }
       }
     },
   };
