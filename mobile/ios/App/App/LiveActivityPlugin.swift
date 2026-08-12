@@ -17,6 +17,57 @@ import UserNotifications
 @objc(LiveActivityPlugin)
 public class LiveActivityPlugin: CAPPlugin {
 
+    /*
+      The repaint half of the lock screen dive buttons.
+
+      The buttons are plain AppIntents running in the widget extension, which
+      is the only way they work on a locked passcode phone (see
+      DiveIntents.swift). The extension cannot push ActivityKit updates, so a
+      tap changes DiveTimerStore and nothing else; the card would sit stale
+      until the next GPS-driven update, up to thirty seconds away, which on
+      the rail reads as a dead button.
+
+      So while a trip activity exists, the app watches the store. During a
+      trip the app is alive in the background anyway for GPS, and the watcher
+      is a three second timer comparing one UserDefaults value; on change it
+      pushes the activity update the extension could not. Tap to repaint is
+      then at most three seconds, usually about one.
+    */
+    private var diveWatcher: Timer?
+    private var lastPushedDiveStart: Date?
+
+    private func startDiveWatcher() {
+        guard #available(iOS 16.2, *) else { return }
+        stopDiveWatcher()
+        lastPushedDiveStart = nil
+        let t = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
+            self?.pushDiveStateIfChanged()
+        }
+        t.tolerance = 1
+        RunLoop.main.add(t, forMode: .common)
+        diveWatcher = t
+    }
+
+    private func stopDiveWatcher() {
+        diveWatcher?.invalidate()
+        diveWatcher = nil
+    }
+
+    private func pushDiveStateIfChanged() {
+        guard #available(iOS 16.2, *) else { return }
+        let current = UserDefaults(suiteName: DiveTimerStore.appGroup)?
+            .object(forKey: "dive_started_at") as? Date
+        guard current != lastPushedDiveStart else { return }
+        lastPushedDiveStart = current
+        Task {
+            for activity in Activity<TripActivityAttributes>.activities {
+                var state = activity.content.state
+                DiveTimerStore.pushDiveState(into: &state)
+                await activity.update(ActivityContent(state: state, staleDate: nil))
+            }
+        }
+    }
+
     @objc func startTrip(_ call: CAPPluginCall) {
         guard #available(iOS 16.2, *), ActivityAuthorizationInfo().areActivitiesEnabled else {
             call.resolve(["started": false])
@@ -50,6 +101,7 @@ public class LiveActivityPlugin: CAPPlugin {
                 content: ActivityContent(state: state, staleDate: nil)
             )
             call.resolve(["started": true])
+            startDiveWatcher()
         } catch {
             call.resolve(["started": false, "error": error.localizedDescription])
         }
@@ -74,6 +126,7 @@ public class LiveActivityPlugin: CAPPlugin {
     }
 
     @objc func endTrip(_ call: CAPPluginCall) {
+        stopDiveWatcher()
         guard #available(iOS 16.2, *) else { return call.resolve() }
         DiveTimerStore.clearTrip()
         Task {

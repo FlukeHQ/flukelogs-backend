@@ -58,6 +58,13 @@ extension MainViewController {
     override public func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         guard ProcessInfo.processInfo.environment["FL_LA_TEST"] == "1" else { return }
+        // The store as this launch sees it. Comparing this line before and
+        // after a locked tap answers "did the intent run at all" without any
+        // repaint working.
+        let d = UserDefaults(suiteName: DiveTimerStore.appGroup)
+        NSLog("[FL_LA_TEST] store: dive_started_at=%@ history=%@",
+              String(describing: d?.object(forKey: "dive_started_at")),
+              String(describing: d?.array(forKey: "dive_history_seconds")))
         if #available(iOS 16.2, *) {
             let attributes = TripActivityAttributes(
                 tripStartedAt: Date(),

@@ -1,19 +1,34 @@
 //
 //  DiveIntents.swift
-//  Membership: BOTH targets (intents that appear on a Live Activity must be
-//  visible to the app that owns the activity).
+//  Membership: BOTH targets.
 //
 //  The lock screen buttons. Each intent flips the dive state in
-//  DiveTimerStore, then repaints every running trip activity so the card
-//  reflects it immediately. No unlock, no app launch.
+//  DiveTimerStore; the card reads that state straight from the app group at
+//  render time, so the re-render the system performs after an intent is
+//  enough to repaint it.
+//
+//  WHY THESE ARE PLAIN AppIntents AND NOT LiveActivityIntent, learned on a
+//  passcode phone on 2026-08-09 after two App Store rounds:
+//
+//  LiveActivityIntent runs in the APP process. Launching a third party app
+//  process from a locked phone requires authentication, an iOS rule that
+//  sits ABOVE authenticationPolicy, which is why .alwaysAllowed changed
+//  nothing and why the passcode-less simulator ran the buttons fine while
+//  every real phone demanded Face ID. A plain AppIntent that lives in the
+//  widget extension runs IN the extension, which is already trusted to draw
+//  the lock screen, so nothing needs unlocking.
+//
+//  The cost: an extension cannot push ActivityKit updates, so perform() does
+//  not repaint the card by calling ActivityKit. The card repaints because
+//  the system re-renders a Live Activity after one of its intents runs, and
+//  the view reads DiveTimerStore directly.
 //
 
-import ActivityKit
 import AppIntents
 import Foundation
 
 @available(iOS 17.0, *)
-struct StartDiveIntent: LiveActivityIntent {
+struct StartDiveIntent: AppIntent {
     /*
       Without this the button asks for the passcode.
 
@@ -37,13 +52,12 @@ struct StartDiveIntent: LiveActivityIntent {
 
     func perform() async throws -> some IntentResult {
         _ = DiveTimerStore.startDive()
-        await refreshTripActivities()
         return .result()
     }
 }
 
 @available(iOS 17.0, *)
-struct SurfacedIntent: LiveActivityIntent {
+struct SurfacedIntent: AppIntent {
     /*
       Without this the button asks for the passcode.
 
@@ -67,13 +81,12 @@ struct SurfacedIntent: LiveActivityIntent {
 
     func perform() async throws -> some IntentResult {
         _ = DiveTimerStore.surfaced()
-        await refreshTripActivities()
         return .result()
     }
 }
 
 @available(iOS 17.0, *)
-struct CancelDiveIntent: LiveActivityIntent {
+struct CancelDiveIntent: AppIntent {
     /*
       Without this the button asks for the passcode.
 
@@ -97,16 +110,7 @@ struct CancelDiveIntent: LiveActivityIntent {
 
     func perform() async throws -> some IntentResult {
         DiveTimerStore.cancelDive()
-        await refreshTripActivities()
         return .result()
     }
 }
 
-@available(iOS 16.2, *)
-private func refreshTripActivities() async {
-    for activity in Activity<TripActivityAttributes>.activities {
-        var state = activity.content.state
-        DiveTimerStore.pushDiveState(into: &state)
-        await activity.update(ActivityContent(state: state, staleDate: nil))
-    }
-}
