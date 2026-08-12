@@ -1637,6 +1637,29 @@
       <a class="btn btn-outline" style="margin-top:10px;" href="/privacy.html" target="_blank" rel="noopener">Read the full privacy policy</a>
     </div>
 
+    <!--
+      The dock reminder, and a way to see it.
+
+      When a trip is still running as the boat comes back inside the harbor,
+      the app asks whether you are still logging. Crews should be able to see
+      what that looks like before it happens for real at the end of a long
+      day, and App Review needs a way to exercise notification actions at a
+      desk, where no boat is moving. One button serves both.
+
+      Not hidden behind admin: it is a normal thing to want to try, and the
+      diagnostics block it used to live in is invisible to everyone who is
+      not a platform admin, which included the reviewer.
+    -->
+    <div class="app-links">
+      <div class="app-links-label">Dock reminder</div>
+      <p class="app-links-note" style="margin-top:0;">
+        If a trip is still running when you get back to the harbor, Flukelogs asks
+        whether you are still out. Press and hold the alert to answer it without
+        unlocking the phone.
+      </p>
+      <button class="btn btn-outline" type="button" onclick="testDockPrompt(this)">Show me the reminder</button>
+    </div>
+
     <!-- Get the app. Below Save on purpose: a captain opens Settings to change
          something, not to install anything. This is for the moment a new crew
          member is handed a phone and asked where the app comes from, so it
@@ -1668,10 +1691,6 @@
       <div class="app-links-label">Live Activity diagnostics</div>
       <pre id="viewportDiagOut" style="font:11px/1.6 ui-monospace,Menlo,monospace;color:var(--text-muted);white-space:pre-wrap;margin:8px 0 0;"></pre>
       <button class="btn btn-outline" type="button" onclick="renderViewportDiag()" style="margin-top:10px;">Refresh readings</button>
-      <!-- Field testing without the USB launch dance: five seconds is enough
-           time to lock the phone, which is the state the prompt exists for.
-           Admin only, like everything in this block. -->
-      <button class="btn btn-outline" type="button" onclick="testDockPrompt(this)" style="margin-top:10px;">Send test dock prompt (5s)</button>
     </div>
   </div>
 
@@ -4189,14 +4208,14 @@
     }
     flFence.listen();
     btn.disabled = true;
-    btn.textContent = 'Lock the phone now...';
+    btn.textContent = 'Lock your phone now...';
     setTimeout(() => {
       pl.promptStillLogging({
         title: 'Back at the dock?',
         body: 'Looks like the boat is in. Still logging whales?',
       }).catch(() => {});
       btn.disabled = false;
-      btn.textContent = 'Send test dock prompt (5s)';
+      btn.textContent = 'Show me the reminder';
     }, 5000);
   }
 
