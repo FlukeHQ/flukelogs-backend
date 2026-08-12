@@ -211,6 +211,18 @@ extension LiveActivityPlugin: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         NSLog("[Flukelogs] notification action: %@", response.actionIdentifier)
+        // A plain tap (the default action) opens the app; for the fence
+        // prompt that must ASK the question in-app, because most crew tap
+        // rather than long-press. The long-press buttons stay as the fast
+        // path for whoever knows them. Slater's call after the first field
+        // test of the buttons.
+        if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+            if response.notification.request.content.categoryIdentifier == Self.fenceCategory {
+                notifyListeners("fencePrompt", data: ["answer": "opened"], retainUntilConsumed: true)
+            }
+            completionHandler()
+            return
+        }
         switch response.actionIdentifier {
         case "SURFACED":
             _ = DiveTimerStore.surfaced()
@@ -226,9 +238,9 @@ extension LiveActivityPlugin: UNUserNotificationCenterDelegate {
                 return
             }
         case "STILL_OUT":
-            notifyListeners("fencePrompt", data: ["answer": "still_out"])
+            notifyListeners("fencePrompt", data: ["answer": "still_out"], retainUntilConsumed: true)
         case "END_TRIP":
-            notifyListeners("fencePrompt", data: ["answer": "end_trip"])
+            notifyListeners("fencePrompt", data: ["answer": "end_trip"], retainUntilConsumed: true)
         default:
             break
         }

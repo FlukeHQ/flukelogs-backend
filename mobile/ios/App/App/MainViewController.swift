@@ -88,8 +88,14 @@ extension MainViewController {
                 // simulator lock screen without a trip or a login.
                 if let plugin = bridge?.plugin(withName: "LiveActivity") as? LiveActivityPlugin {
                     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in
-                        let call = CAPPluginCall(callbackId: "fl-la-test", options: [:], success: { _, _ in }, error: { _ in })
-                        plugin.promptStillLogging(call!)
+                        // Eight seconds: enough time to lock the phone, so the
+                        // prompt lands ON the locked screen the way a real
+                        // fence crossing would, instead of as a foreground
+                        // banner while the tester is still holding the phone.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
+                            let call = CAPPluginCall(callbackId: "fl-la-test", options: [:], success: { _, _ in }, error: { _ in })
+                            plugin.promptStillLogging(call!)
+                        }
                     }
                 }
             } catch {

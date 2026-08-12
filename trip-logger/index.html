@@ -2629,6 +2629,18 @@
           // Stand down until the boat genuinely leaves again.
           this.armed = false;
           this.prompted = false;
+        } else if (answer === 'opened') {
+          // A plain tap on the notification: the app is now open, so ask the
+          // same question here. Most crew tap; the long press buttons are the
+          // shortcut for the ones who know.
+          if (trip.startTime && !trip.endTime) {
+            if (confirm('Back at the dock. Still logging whales?\n\nOK if you are still out. Cancel to end the trip.')) {
+              this.armed = false;
+              this.prompted = false;
+            } else {
+              endTrip();
+            }
+          }
         }
       });
     },
@@ -6810,6 +6822,7 @@
     }
   });
 
+  flFence.listen();
   bootApp();
 </script>
 </body>
