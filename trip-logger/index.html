@@ -293,7 +293,13 @@
       pointer-events: none;
     }
     .section > * { position: relative; }
-    .section.section-readonly { display: flex; align-items: baseline; justify-content: space-between; }
+    .settings-head { margin: 4px 2px 18px; }
+    .settings-head h2 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: .5px; color: var(--text); }
+    .settings-head p { margin: 2px 0 0; font-size: 13px; color: var(--text-muted); }
+    .settings-group-label {
+      font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--text-muted); margin: 26px 2px 8px;
+    }
     .settings-note { font-size: 12.5px; line-height: 1.55; color: var(--text-muted); margin: 0 0 10px; }
     .settings-note b { color: var(--text); font-weight: 600; }
     .section-label {
@@ -1502,13 +1508,13 @@
 
   <!-- Settings (operator-editable subset of operator config) -->
   <div class="screen" id="screenSettings">
-    <!-- The operator name is read only and set in Flukesend, so it was a
-         disabled text box holding a value nobody can change, forced open at
-         the top of the screen. It is a fact, not a field: it now reads as the
-         row's own status, the way every other section here works. -->
-    <div class="section section-readonly">
-      <div class="section-label">Operator</div>
-      <span class="section-status" id="settingsName"></span>
+    <!-- Not a card. The operator name is read only, set in Flukesend, and
+         nobody can act on it, so wrapping it in a tappable-looking panel of
+         its own promised an interaction that does not exist. It is the page
+         header: what screen you are on, and whose boat this is. -->
+    <div class="settings-head">
+      <h2>Settings</h2>
+      <p id="settingsName"></p>
     </div>
 
     <details class="section section-collapsible">
@@ -1625,27 +1631,15 @@
     </details>
 
     <button class="btn btn-primary" id="settingsSaveBtn" onclick="saveSettings()">Save Settings</button>
-    <button class="btn btn-outline" type="button" onclick="goHome()">Back</button>
+
+    <!-- Everything below is reference, not configuration: nothing here is
+         saved, so it sits after Save rather than between the fields and it. -->
+    <div class="settings-group-label">About</div>
 
     <!-- What the app records. The same wording every crew member accepted at
          the consent gate, permanently findable afterwards: a disclosure that
          can only be read once, at sign in, under a deadline of wanting to use
          the app, is not really readable at all. -->
-    <details class="section section-collapsible">
-      <summary>
-        <div class="section-label">What this app records</div>
-        <span class="section-status">Location, during trips only</span>
-      </summary>
-      <div class="section-body">
-      <p class="app-links-note" style="margin-top:0;">
-        Your location is recorded <b>only between Start Trip and End Trip</b>. Nothing runs at any other time.
-        <b>End the trip before you leave the boat.</b> If you forget, it keeps recording, including your drive home.
-        Guests see your boat's position on a delay, rounded to about a kilometre; they never see exactly where you are.
-      </p>
-      <a class="btn btn-outline" style="margin-top:10px;" href="/privacy.html" target="_blank" rel="noopener">Read the full privacy policy</a>
-      </div>
-    </details>
-
     <!--
       Notifications. A row like everything else here, and the copy cut to one
       line per alert: Slater's read was that this screen had turned into
@@ -1664,6 +1658,21 @@
         <p class="settings-note"><b>Dock reminder.</b> Asks if you are still out when a trip is still running at the harbor.</p>
         <p class="settings-note">Press and hold either alert to answer it without unlocking the phone.</p>
         <button class="btn btn-outline" type="button" onclick="testDockPrompt(this)">Show me the dock reminder</button>
+      </div>
+    </details>
+
+    <details class="section section-collapsible">
+      <summary>
+        <div class="section-label">What this app records</div>
+        <span class="section-status">Location, during trips only</span>
+      </summary>
+      <div class="section-body">
+      <p class="app-links-note" style="margin-top:0;">
+        Your location is recorded <b>only between Start Trip and End Trip</b>. Nothing runs at any other time.
+        <b>End the trip before you leave the boat.</b> If you forget, it keeps recording, including your drive home.
+        Guests see your boat's position on a delay, rounded to about a kilometre; they never see exactly where you are.
+      </p>
+      <a class="btn btn-outline" style="margin-top:10px;" href="/privacy.html" target="_blank" rel="noopener">Read the full privacy policy</a>
       </div>
     </details>
 
@@ -1689,6 +1698,8 @@
 
       </div>
     </details>
+
+    <button class="btn btn-outline" type="button" onclick="goHome()">Back</button>
 
     <!--
       Live Activity diagnostics. Hidden for everyone except the platform
