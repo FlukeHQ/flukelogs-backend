@@ -247,19 +247,24 @@
     }
     #whaleLogList::-webkit-scrollbar { width: 0; height: 0; }
     #screenWhaleLog .btn { flex: none; }
+    /* Same glass recipe as .sighting-row, so the Whale Log matches the rest
+       of the app's lists. The inset highlight hides behind a full-bleed thumb
+       on photo cards; the border and shadow still carry the depth there. */
     .whale-row {
       display: block;
       cursor: pointer;
-      border: 1px solid var(--hair-2);
-      border-radius: 12px;
+      border: 1px solid var(--hair);
+      border-radius: 18px;
       padding: 0 0 12px;
       margin-bottom: 10px;
-      background: var(--ink-3);
-      box-shadow: var(--shadow-sm);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.012) 55%, rgba(255,255,255,0) 100%),
+        var(--ink-4);
+      box-shadow: 0 1px 0 rgba(255,255,255,.07) inset, 0 8px 20px rgba(0,0,0,.30);
       overflow: hidden;
-      transition: border-color var(--t-fast), background var(--t-fast);
+      transition: border-color var(--t-fast);
     }
-    .whale-row:active { border-color: var(--teal); background: var(--ink-4); }
+    .whale-row:active { border-color: var(--teal); }
     .whale-row .whale-thumb { width: 100%; height: 150px; background: #000; margin-bottom: 10px; }
     .whale-row .whale-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .whale-row .whale-row-text { padding: 0 14px; }
@@ -866,12 +871,17 @@
 
     /* ── Glance tiles (Sea Temp / Wind from buoy) ──────────────── */
     .glance { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    /* Quieter cut of the glass card recipe: the tiles are small and sit in a
+       grid, so they take the layered fill and inset edge but less shadow. */
     .glance .tile {
-      background: var(--ink-3);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.045) 0%, rgba(255,255,255,.01) 60%, rgba(255,255,255,0) 100%),
+        var(--ink-4);
       border: 1px solid var(--hair);
-      border-radius: 12px;
+      border-radius: 14px;
       padding: 10px 12px 9px;
       display: grid; gap: 4px;
+      box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 4px 12px rgba(0,0,0,.22);
     }
     .glance .tile .lbl { font-size: 8px; font-weight: 600; letter-spacing: 0.24em; text-transform: uppercase; color: var(--text-faint); }
     .glance .tile .val { font: 500 16px/1.1 "Open Sans", sans-serif; color: var(--text); display: flex; align-items: baseline; gap: 3px; }
