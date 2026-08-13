@@ -879,23 +879,68 @@
     .glance .tile .val.placeholder { color: var(--text-faint); font-weight: 400; }
 
     /* ── Sighting list ───────────────────────────────────────────── */
+    /* Rows are individual glass cards, not lines in a panel. The glass is
+       layered fills and an inset top highlight, not backdrop-filter: on a
+       flat dark surface a real blur has nothing to smear, and a dozen
+       blurring cards is scroll jank on the older phones crews carry. */
     .sighting-list {
-      background: var(--ink-3);
-      border: 1px solid var(--hair);
-      border-radius: 14px;
-      overflow: hidden;
-      box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 14px 28px rgba(0,0,0,.35);
+      background: none;
+      border: 0;
+      border-radius: 0;
+      overflow: visible;
+      box-shadow: none;
     }
     .sighting-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 12px;
       padding: 16px 18px;
-      border-bottom: 1px solid var(--hair);
-      transition: background var(--t-fast);
+      margin-bottom: 10px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.012) 55%, rgba(255,255,255,0) 100%),
+        var(--ink-4);
+      border: 1px solid var(--hair);
+      border-radius: 18px;
+      box-shadow: 0 1px 0 rgba(255,255,255,.07) inset, 0 8px 20px rgba(0,0,0,.30);
+      transition: border-color var(--t-fast);
     }
-    .sighting-row:hover { background: rgba(255,255,255,0.02); }
-    .sighting-row:last-child { border-bottom: none; }
+    .sighting-row:hover { border-color: rgba(255,255,255,.14); }
+    .sighting-row:last-child { margin-bottom: 0; }
+    /* Leading icon tile (Past Trips): audio state readable before the text. */
+    .row-tile {
+      flex: 0 0 46px;
+      width: 46px; height: 46px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 14px;
+      background: rgba(111,177,172,.10);
+      border: 1px solid rgba(111,177,172,.30);
+      color: var(--teal);
+      box-shadow: 0 1px 0 rgba(255,255,255,.06) inset;
+    }
+    .row-tile.is-quiet {
+      background: rgba(255,255,255,.04);
+      border-color: var(--hair);
+      color: var(--text-faint);
+    }
+    /* Uppercase status line, the mockup's "AUDIO 1:23 5 PLAYS" row. */
+    .row-status {
+      font-size: 11px; font-weight: 700;
+      letter-spacing: .13em; text-transform: uppercase;
+      margin-top: 6px; color: var(--text-dim);
+    }
+    .row-status.ok { color: var(--success); }
+    /* Circular chevron affordance for rows that navigate somewhere. */
+    .row-go {
+      flex: 0 0 34px;
+      width: 34px; height: 34px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 999px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--hair);
+      color: var(--text-dim);
+      font-size: 15px; font-weight: 600;
+    }
     .sighting-species { font: 600 15px/1.2 "Open Sans", sans-serif; color: var(--text); letter-spacing: 0.005em; }
     .sighting-meta { font-size: 12px; color: var(--text-dim); margin-top: 4px; letter-spacing: 0.02em; }
     .sighting-actions { display: flex; align-items: center; gap: 6px; }
@@ -1076,7 +1121,7 @@
     .sighting-iconbtn.danger:hover { color: #d6a597; border-color: rgba(214,165,151,.45); }
 
     /* Inline edit drawer — replaces a row when editing */
-    .sighting-row.is-editing { display: block; padding: 14px 18px 16px; background: rgba(255,255,255,0.02); }
+    .sighting-row.is-editing { display: block; padding: 14px 18px 16px; }
     .sighting-edit-grid { display: grid; grid-template-columns: 1fr 90px; gap: 10px; }
     .sighting-edit-grid .field-full { grid-column: 1 / -1; }
     .sighting-edit-actions { display: flex; gap: 8px; margin-top: 12px; }
@@ -1715,7 +1760,7 @@
   <div class="screen" id="screenPastTrips">
     <div class="section">
       <div class="section-label">Past Trips</div>
-      <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.5;">Record an audio note for any past trip — guests on your website can listen to it from the public sightings widget. Pick a trip.</p>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.5;">Record an audio note for any past trip. Guests on your website can listen to it from the public sightings widget. Pick a trip.</p>
       <div id="pastTripsList"><div class="empty">Loading…</div></div>
       <button class="btn btn-outline" type="button" onclick="goHome()">Back</button>
     </div>
@@ -6484,8 +6529,18 @@
         ? ` · ${t.play_count} play${t.play_count === 1 ? '' : 's'}`
         : '';
       const audioStatus = t.has_audio
-        ? `<div class="sighting-meta" style="color:var(--success);">✓ Audio · ${fmtSec(t.duration_seconds || 0)}${playsLabel}</div>`
-        : '<div class="sighting-meta">🎙 Add audio</div>';
+        ? `<div class="row-status ok">✓ Audio · ${fmtSec(t.duration_seconds || 0)}${playsLabel}</div>`
+        : '<div class="row-status">Add audio</div>';
+      // Four rounded bars, the app's waveform mark. Tile goes quiet when the
+      // trip has no note yet, so the list reads at a glance.
+      const tile = `<div class="row-tile${t.has_audio ? '' : ' is-quiet'}" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+          <rect x="1.5" y="7" width="3" height="6" rx="1.5"/>
+          <rect x="6.5" y="4" width="3" height="12" rx="1.5"/>
+          <rect x="11.5" y="6" width="3" height="8" rx="1.5"/>
+          <rect x="16" y="8" width="3" height="4" rx="1.5"/>
+        </svg>
+      </div>`;
       // The real departure beats the daypart: two boats on one morning read
       // identically as "Morning", and the captain cannot tell which row is
       // theirs. Boat name only when the day had more than one trip, so a
@@ -6493,12 +6548,13 @@
       const when = fmtDeparture(t.trip_time) || t.trip_part || '';
       const boat = (t.trips_that_day > 1 && t.boat_name) ? ' · ' + escapeHtml(t.boat_name) : '';
       return `<div class="sighting-row" style="cursor:pointer;" onclick="openTripAudio('${t.trip_id}', '${t.trip_date}', '${t.trip_part || ''}')">
-        <div>
+        ${tile}
+        <div style="flex:1;min-width:0;">
           <div class="sighting-species">${fmtTripDate(t.trip_date)}${when ? ' · ' + escapeHtml(when) : ''}${boat}</div>
           <div class="sighting-meta">${t.species_count} species · ${t.animal_count} animals</div>
           ${audioStatus}
         </div>
-        <div class="sighting-badge">›</div>
+        <div class="row-go" aria-hidden="true">›</div>
       </div>`;
     }).join('');
   }
