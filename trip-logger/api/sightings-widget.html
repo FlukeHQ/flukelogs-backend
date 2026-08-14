@@ -881,16 +881,43 @@ const BOOK_URL = (OP && typeof OP.booking_url === 'string' && OP.booking_url.tri
   ? OP.booking_url.trim()
   : null;
 
+/*
+  Traffic beacons: one 'view' per page load, one 'book_click' per Book Now
+  tap, into widget_events via /api/widget-event. This is how "the widget
+  drives bookings" becomes a number. keepalive so a click that navigates
+  away still lands (the buttons open a new tab anyway, belt and braces);
+  fire-and-forget, and a beacon failure must never break the widget.
+*/
+function logWidgetEvent(kind, source) {
+  if (!OP || !OP.slug) return;
+  try {
+    fetch('/api/widget-event', {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ op: OP.slug, kind: kind, source: source || undefined }),
+    }).catch(function () {});
+  } catch (e) { /* never the widget's problem */ }
+}
+
 function applyBookingLinks() {
   const now = document.getElementById('nowCta');
   const strip = document.getElementById('ctaStrip');
   const btn = document.getElementById('ctaBtn');
   if (!BOOK_URL) return;               // stay hidden
-  if (now) { now.href = BOOK_URL; now.hidden = false; }
-  if (btn) btn.href = BOOK_URL;
+  if (now) {
+    now.href = BOOK_URL;
+    now.hidden = false;
+    now.addEventListener('click', function () { logWidgetEvent('book_click', 'live_banner'); });
+  }
+  if (btn) {
+    btn.href = BOOK_URL;
+    btn.addEventListener('click', function () { logWidgetEvent('book_click', 'cta_strip'); });
+  }
   if (strip) strip.hidden = false;
 }
 applyBookingLinks();
+logWidgetEvent('view');
 
 const WHALE_SPECIES = ['Humpback Whale','Blue Whale','Gray Whale','Fin Whale','Minke Whale','Orca','Transient Orcas','Offshore Orcas','Resident Orcas','Sperm Whale'];
 const DOLPHIN_SPECIES = ['Common Dolphin','Pacific White-sided Dolphin',"Risso's Dolphin","Risso's dolphins",'Bottlenose Dolphin','Coastal Bottlenose Dolphin','Northern Right Whale Dolphin',"Dall's Porpoise",'Harbor Porpoise'];
