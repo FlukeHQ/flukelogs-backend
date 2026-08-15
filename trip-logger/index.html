@@ -3347,8 +3347,35 @@
     renderSightingList();
   }
 
+  /*
+    Always ask, not only when nothing was logged.
+
+    The old guard fired only on an empty sighting list, so a trip with real
+    sightings ended on a single tap with no way back. On 2026-08-15 the 9am
+    Enocean trip was ended by accident an hour in, with two sightings and a
+    full track already recorded, and had to be restarted and stitched back
+    together in the database afterwards.
+
+    Ending is not undoable from the app, so the tap that does it should cost
+    one more tap. Native confirm on purpose, same as every other guard here:
+    it renders large, it works with wet hands, and it cannot be missed the way
+    an in page dialog can when the boat is moving.
+
+    The direct endTrip() callers stay direct: the reload restore path, the auto
+    end when the boat has been parked, and the End trip button on the lock
+    screen notification, which is a deliberate choice already made and cannot
+    answer a prompt anyway.
+  */
   function confirmEndTrip() {
-    if (trip.sightings.length === 0) { if (!confirm('No sightings logged. End trip anyway?')) return; }
+    const n = trip.sightings.length;
+    const headline = n === 0
+      ? 'End the trip with no sightings logged?'
+      : `End the trip with ${n} sighting${n === 1 ? '' : 's'} logged?`;
+    if (!confirm(
+      `${headline}\n\n` +
+      'Recording and the live map stop, and a trip cannot be resumed once it ends.\n\n' +
+      'OK to end. Cancel to keep logging.'
+    )) return;
     endTrip();
   }
 
