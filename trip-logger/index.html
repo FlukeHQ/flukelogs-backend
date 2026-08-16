@@ -1225,6 +1225,35 @@
       text-transform: uppercase;
       color: var(--text);
       z-index: 1200; /* toasts above the (now z-1100) header */
+
+    /* ── Ask dialog ─────────────────────────────────────────────────
+       The two-button question for decisions that end things. Exists because
+       native confirm() cannot rename its buttons, so ending a trip was mapped
+       to "Cancel" and continuing to "OK", with a sentence explaining the
+       mapping. A button that needs a legend is the wrong button (Slater,
+       2026-08-16, from the dock prompt). Above toasts: a question beats a
+       notice. */
+    .fl-ask-overlay {
+      position: fixed; inset: 0; z-index: 1300;
+      background: rgba(4,6,8,0.62);
+      -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .fl-ask-card {
+      width: 100%; max-width: 340px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.012) 55%, rgba(255,255,255,0) 100%),
+        var(--ink-3);
+      border: 1px solid var(--hair);
+      border-radius: 18px;
+      box-shadow: 0 1px 0 rgba(255,255,255,.07) inset, 0 18px 44px rgba(0,0,0,.5);
+      padding: 20px 18px 16px;
+    }
+    .fl-ask-title { font: 600 17px/1.35 "Open Sans", sans-serif; color: var(--text); }
+    .fl-ask-body { font-size: 13px; color: var(--text-dim); line-height: 1.5; margin-top: 8px; }
+    .fl-ask-buttons { display: grid; gap: 8px; margin-top: 16px; }
+    .fl-ask-buttons .btn { width: 100%; margin: 0; }
       /* Toasts are never interactive — without this, the INVISIBLE hidden
          pill (opacity 0, fixed ~bottom 40-100px) silently ate taps meant
          for buttons underneath it, most notably End Trip on the Log screen
@@ -2743,12 +2772,18 @@
           // same question here. Most crew tap; the long press buttons are the
           // shortcut for the ones who know.
           if (trip.startTime && !trip.endTime) {
-            if (confirm('Back at the dock. Still logging whales?\n\nOK if you are still out. Cancel to end the trip.')) {
-              this.armed = false;
-              this.prompted = false;
-            } else {
-              endTrip('dock_prompt');
-            }
+            flAsk({
+              title: 'Back at the dock. Still logging whales?',
+              primary: 'Continue logging',
+              secondary: 'End trip',
+            }).then((answer) => {
+              if (answer === 'primary') {
+                this.armed = false;
+                this.prompted = false;
+              } else {
+                endTrip('dock_prompt');
+              }
+            });
           }
         }
       });
@@ -3348,6 +3383,55 @@
   }
 
   /*
+    One question, two buttons that say what they do.
+
+    Returns a promise resolving 'primary' or 'secondary'. The primary action
+    is always the safe one (keep going), rendered as the big moon-white
+    button; the secondary is the ending one. Tapping the backdrop counts as
+    the safe answer, because a mis-tap at the dock must never end a trip.
+  */
+  function flAsk(opts) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'fl-ask-overlay';
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      const card = document.createElement('div');
+      card.className = 'fl-ask-card';
+      const title = document.createElement('div');
+      title.className = 'fl-ask-title';
+      title.textContent = opts.title;
+      card.appendChild(title);
+      if (opts.body) {
+        const body = document.createElement('div');
+        body.className = 'fl-ask-body';
+        body.textContent = opts.body;
+        card.appendChild(body);
+      }
+      const row = document.createElement('div');
+      row.className = 'fl-ask-buttons';
+      const done = (answer) => { overlay.remove(); resolve(answer); };
+      const primary = document.createElement('button');
+      primary.type = 'button';
+      primary.className = 'btn btn-primary';
+      primary.textContent = opts.primary;
+      primary.onclick = () => done('primary');
+      const secondary = document.createElement('button');
+      secondary.type = 'button';
+      secondary.className = 'btn btn-outline';
+      secondary.textContent = opts.secondary;
+      secondary.onclick = () => done('secondary');
+      row.appendChild(primary);
+      row.appendChild(secondary);
+      card.appendChild(row);
+      overlay.appendChild(card);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) done('primary'); });
+      document.body.appendChild(overlay);
+      primary.focus();
+    });
+  }
+
+  /*
     Always ask, not only when nothing was logged.
 
     The old guard fired only on an empty sighting list, so a trip with real
@@ -3368,15 +3452,16 @@
   */
   function confirmEndTrip() {
     const n = trip.sightings.length;
-    const headline = n === 0
-      ? 'End the trip with no sightings logged?'
-      : `End the trip with ${n} sighting${n === 1 ? '' : 's'} logged?`;
-    if (!confirm(
-      `${headline}\n\n` +
-      'Recording and the live map stop, and a trip cannot be resumed once it ends.\n\n' +
-      'OK to end. Cancel to keep logging.'
-    )) return;
-    endTrip('button');
+    flAsk({
+      title: n === 0
+        ? 'End the trip with no sightings logged?'
+        : `End the trip with ${n} sighting${n === 1 ? '' : 's'} logged?`,
+      body: 'Recording and the live map stop. A trip cannot be resumed once it ends.',
+      primary: 'Keep logging',
+      secondary: 'End trip',
+    }).then((answer) => {
+      if (answer === 'secondary') endTrip('button');
+    });
   }
 
   /*
