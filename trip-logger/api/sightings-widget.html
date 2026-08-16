@@ -1834,11 +1834,37 @@ function renderLive(live) {
     }
     if (boat.position) {
       const size = 26;
+      /*
+        Point the bow where the boat is going. The replay boat has done this
+        since it shipped; the live one was drawn bow-north and left there, so
+        a boat steaming home read as heading out (Slater, from the water,
+        2026-08-16).
+
+        Heading comes from the last two distinct points of the same delayed,
+        grid-snapped track the public line already draws, so it reveals
+        nothing new. The grid quantizes the angle (45 degree steps at worst)
+        and the delay means the bow answers "which way has she been going",
+        not "which way is she pointing this second". Both are the right
+        trade: roughly right beats always-north, and precise-now is exactly
+        what the live layer must never say. No two distinct points yet
+        (a boat still at the dock) stays bow-north.
+      */
+      let hullDeg = 0;
+      const rawTrack = boat.track || [];
+      const last = rawTrack.length ? rawTrack[rawTrack.length - 1] : null;
+      for (let i = rawTrack.length - 2; i >= 0 && last; i--) {
+        const dLat = (+last.lat) - (+rawTrack[i].lat);
+        const dLng = ((+last.lng) - (+rawTrack[i].lng)) * Math.cos((+last.lat) * Math.PI / 180);
+        if (Math.abs(dLat) > 1e-9 || Math.abs(dLng) > 1e-9) {
+          hullDeg = Math.atan2(dLng, dLat) * 180 / Math.PI;  // 0 = north, bow up
+          break;
+        }
+      }
       const marker = L.marker([+boat.position.lat, +boat.position.lng], {
         icon: L.divIcon({
           html: '<div class="live-boat" style="width:' + size + 'px;height:' + size + 'px;">' +
             '<div class="ping" style="border-color:' + color + ';"></div>' +
-            '<div class="hull">' + boatSvg(color, 20) + '</div></div>',
+            '<div class="hull" style="transform:rotate(' + hullDeg.toFixed(1) + 'deg);transform-origin:50% 50%;">' + boatSvg(color, 20) + '</div></div>',
           className: '',
           iconSize: [size, size],
           iconAnchor: [size / 2, size / 2],
