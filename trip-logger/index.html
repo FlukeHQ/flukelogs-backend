@@ -2733,7 +2733,7 @@
           // The crew's explicit tap from the notification; same flow as the
           // End Trip button, minus the no-sightings confirm a locked phone
           // cannot answer.
-          if (trip.startTime && !trip.endTime) endTrip();
+          if (trip.startTime && !trip.endTime) endTrip('dock_notification');
         } else if (answer === 'still_out') {
           // Stand down until the boat genuinely leaves again.
           this.armed = false;
@@ -2747,7 +2747,7 @@
               this.armed = false;
               this.prompted = false;
             } else {
-              endTrip();
+              endTrip('dock_prompt');
             }
           }
         }
@@ -3022,7 +3022,7 @@
   function autoEndTrip() {
     if (!trip.liveId || trip.endTime) return;
     trip.liveAutoEnded = true;
-    endTrip();
+    endTrip('auto_parked');
     toast('Trip ended automatically. The boat has been stopped for 15 minutes.');
   }
 
@@ -3376,10 +3376,17 @@
       'Recording and the live map stop, and a trip cannot be resumed once it ends.\n\n' +
       'OK to end. Cancel to keep logging.'
     )) return;
-    endTrip();
+    endTrip('button');
   }
 
-  function endTrip() {
+  /*
+    reason: how this end came about, stamped once and carried through Log Trip
+    into logbook_trips.ended_via. First writer wins, so a reload of an already
+    ended trip cannot relabel what actually ended it. The Ocean Thunder double
+    log of 2026-08-14 was unattributable exactly because nothing recorded this.
+  */
+  function endTrip(reason) {
+    if (!trip.endReason && reason) trip.endReason = reason;
     // Restored already-ended trips arrive here with a real endTime — keep it,
     // or the duration would silently stretch to "now" after a reload.
     if (!trip.endTime) trip.endTime = new Date();
@@ -4269,7 +4276,7 @@
         showScreen('screenLog');
         toast('Trip restored', 'success');
       } else {
-        endTrip();
+        endTrip('restore');
       }
     } catch(e) {}
   }
