@@ -693,6 +693,11 @@ async function saveLogbookTrip(tripData, operatorId, attribution) {
   */
   if (attribution && attribution.userId) row.logged_by = attribution.userId;
   if (attribution && attribution.platform) row.logged_on = attribution.platform;
+  // How recording ended (migration 0070). Allowlisted because it rides in on
+  // the client payload; anything unrecognized is dropped rather than stored,
+  // and absence stays null, the "nothing claimed this end" signal.
+  const ENDED_VIA = ['button', 'dock_notification', 'dock_prompt', 'auto_parked', 'restore'];
+  if (ENDED_VIA.includes(tripData.endReason)) row.ended_via = tripData.endReason;
   if (typeof tripData.liveId === 'string' &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tripData.liveId)) {
     row.live_trip_id = tripData.liveId;
