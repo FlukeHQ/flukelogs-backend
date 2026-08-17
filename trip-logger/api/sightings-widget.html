@@ -2603,6 +2603,15 @@ let _replayToken = 0;
 let _replayLine = null;
 let _replayBoat = null;
 let _boatPrev = null;                 // last boat position, for heading
+// Heading state for the replay boat. _boatHeadRef is where the heading was
+// last recalculated; _boatHeadDeg is CUMULATIVE degrees, not normalized,
+// because the CSS transition animates between raw values: normalize to
+// -180..180 and a southbound boat (which is exactly where the wrap sits)
+// flips between -170 and +170, and the transition takes the long way round,
+// a near-full spin on every flicker. Princess returns home heading south;
+// her replay boat pirouetted all the way up the harbor channel.
+let _boatHeadRef = null;
+let _boatHeadDeg = 0;
 
 async function replayTrip(tripKey, opts) {
   const silent = opts && opts.silent;
@@ -2703,6 +2712,8 @@ async function replayTrip(tripKey, opts) {
     // The little boat that rides the head of the line.
     const boat = _replayBoat = L.marker(anchors[0], { icon: makeBoatIcon(), interactive: false, keyboard: false, zIndexOffset: 1000 }).addTo(map);
     _boatPrev = null;
+    _boatHeadRef = null;
+    _boatHeadDeg = 0;
     moveBoat(boat, anchors[0][0], anchors[0][1]);
 
     line.addLatLng(anchors[0]);
@@ -2809,15 +2820,32 @@ function makeBoatIcon() {
 // Heading is computed from the previous position; tiny moves keep the prior
 // heading so the boat doesn't jitter when nearly still.
 function moveBoat(boat, lat, lng) {
-  if (_boatPrev) {
-    const dLat = lat - _boatPrev[0];
-    const dLng = (lng - _boatPrev[1]) * Math.cos(lat * Math.PI / 180);
-    if (Math.abs(dLat) > 1e-9 || Math.abs(dLng) > 1e-9) {
-      const deg = Math.atan2(dLng, dLat) * 180 / Math.PI;  // 0° = north (bow up)
-      const el = boat.getElement && boat.getElement();
-      const inner = el && el.querySelector('.replay-boat-inner');
-      if (inner) inner.style.transform = 'rotate(' + deg + 'deg)';
-    }
+  /*
+    Two rules keep the bow steady (the boat visibly shook before, Slater
+    2026-08-17, and worst coming home southbound):
+
+    Recalculate only after ~8 m of actual travel. Consecutive downsampled
+    points are metres apart, so per-step bearings are mostly GPS noise; a
+    straight run read as a wagging bow.
+
+    Turn the SHORT way. The bearing is folded into a cumulative angle by
+    shortest signed difference, so the CSS transition never sees south flip
+    from -170 to +170 and animate 340 degrees of pirouette.
+  */
+  if (!_boatHeadRef) _boatHeadRef = [lat, lng];
+  const hdLat = lat - _boatHeadRef[0];
+  const hdLng = (lng - _boatHeadRef[1]) * Math.cos(lat * Math.PI / 180);
+  const movedM = Math.sqrt(hdLat * hdLat + hdLng * hdLng) * 111320;
+  if (movedM >= 8) {
+    const target = Math.atan2(hdLng, hdLat) * 180 / Math.PI;  // 0° = north (bow up)
+    let delta = (target - _boatHeadDeg) % 360;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    _boatHeadDeg += delta;
+    const el = boat.getElement && boat.getElement();
+    const inner = el && el.querySelector('.replay-boat-inner');
+    if (inner) inner.style.transform = 'rotate(' + _boatHeadDeg.toFixed(1) + 'deg)';
+    _boatHeadRef = [lat, lng];
   }
   boat.setLatLng([lat, lng]);
   _boatPrev = [lat, lng];
