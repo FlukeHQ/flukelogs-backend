@@ -69,6 +69,24 @@
   .is-embedded::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
   .widget-wrap { max-width: 860px; margin: 0 auto; padding: 28px 18px 40px; }
+  /*
+    Wide screens get a wide widget. 860px was chosen when the only home was a
+    phone and a middling content column; the day Princess put the embed on
+    their real site (2026-08-17), a desktop browser showed a centered strip
+    using half the screen, and the map, the thing guests come to look at, was
+    the part paying for it.
+
+    The extra room goes to the map, not the text: the legend column holds at a
+    readable width and the map absorbs the rest, growing taller as well.
+    Everything at phone width is untouched, and the breakpoint is on the
+    IFRAME's width (this document's viewport), so an operator who embeds us in
+    a narrow column keeps the compact layout automatically.
+  */
+  @media (min-width: 1000px) {
+    .widget-wrap { max-width: 1240px; }
+    .fm-grid { grid-template-columns: 300px 1fr; gap: 26px; }
+    .map-wrap { height: 500px; }
+  }
 
   /* ── Editorial header (Fraunces title + monospace date) ── */
   .ed-header { margin-bottom: 22px; }
