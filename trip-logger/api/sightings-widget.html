@@ -205,6 +205,29 @@
   .fm-grid.no-map { grid-template-columns: 1fr; }
   .fm-grid.no-map .legend-col { max-width: 480px; }
 
+  /* ── Known whales: the quiet line under the humpback row ──────────
+     Confirmed Happywhale identifications, names only. Sits inside the odds
+     panel because that is where a guest is already asking what they will
+     see; the answer "these exact whales, and we know them" is the strongest
+     line in the product. No pins, no cluster: who lives here, where stays
+     on the map. */
+  .known-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 12px 9px 30px;
+    font-size: 11.5px; color: var(--text-dim);
+    line-height: 1.4;
+  }
+  .known-avatars { display: flex; flex-shrink: 0; }
+  .known-avatars img {
+    width: 20px; height: 20px; border-radius: 50%;
+    object-fit: cover; display: block;
+    border: 1.5px solid var(--ink-3);
+    margin-left: -6px;
+    background: var(--ink-4);
+  }
+  .known-avatars img:first-child { margin-left: 0; }
+  .known-names em { font-style: normal; color: var(--text); font-weight: 600; }
+
   /* Likelihood bar behind each species row: the row IS the statistic. */
   .legend-row { position: relative; }
   .legend-bar {
@@ -2143,6 +2166,9 @@ function renderLegend(data) {
         <span class="legend-freq">${spec.trips} of ${totalTrips}</span>
         <span class="legend-count">${spec.pct}%</span>
       </button>`);
+    // Under the humpback row: the individuals we have identified by fluke,
+    // when the operator has any. Names sell what a percentage cannot.
+    if (/humpback/i.test(spec.name)) rows.push(knownWhalesHTML());
   });
   list.innerHTML = rows.join('');
 
@@ -2155,6 +2181,25 @@ function renderLegend(data) {
   });
 
   syncFilterUI();
+}
+
+// The known-whales line. Empty string when the operator has no confirmed
+// identifications, so operators without Happywhale simply never see it.
+function knownWhalesHTML() {
+  const whales = (window.__OP_CONFIG && window.__OP_CONFIG.known_whales) || [];
+  if (!whales.length) return '';
+  const avatars = whales.slice(0, 5)
+    .filter(w => w.thumb)
+    .map(w => `<img src="${String(w.thumb).replace(/"/g, '&quot;')}" alt="" title="${String(w.name).replace(/"/g, '&quot;')}" loading="lazy">`)
+    .join('');
+  const names = whales.map(w => w.name);
+  const shown = names.slice(0, 3).map(n => `<em>${n}</em>`).join(', ');
+  const more = names.length > 3 ? ` &amp; ${names.length - 3} more` : '';
+  return `
+    <div class="known-row" title="Individual whales identified by their flukes, via Happywhale">
+      ${avatars ? `<span class="known-avatars">${avatars}</span>` : ''}
+      <span class="known-names">Known by name: ${shown}${more}</span>
+    </div>`;
 }
 
 // ── Mobile · C — segmented group + horizontal species rail ──────────────────

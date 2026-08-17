@@ -49,6 +49,55 @@ async function loadBrandingRow(operatorId) {
   }
 }
 
+/*
+  The whales this operator knows by name: confirmed Happywhale identifications,
+  grouped per individual. Public on purpose, and only the public-safe fields:
+  a nickname, a catalogue id, a fluke thumbnail, how many trips, when last
+  seen. No positions ride along; the shelf answers who, the map answers where.
+
+  Only matches that PUBLISHED may appear: matched at send time by the strict
+  bar, or promoted later by the two-signal review. needs_human_review and
+  rejected rows never reach guests, same rule as the gallery cards.
+*/
+async function loadKnownWhales(operatorId) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SECRET_KEY;
+  if (!url || !key || !operatorId) return [];
+  try {
+    const q = `happywhale_matches?operator_id=eq.${operatorId}` +
+      `&or=(status.eq.matched,review_status.in.(claude_reviewed,human_confirmed))` +
+      `&select=individual,delivery_id,resolved_at&limit=500`;
+    const res = await fetch(`${url}/rest/v1/${q}`, {
+      headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+    });
+    if (!res.ok) return [];
+    const rows = await res.json();
+    const byId = new Map();
+    for (const r of rows) {
+      const ind = r.individual && r.individual.individual;
+      if (!ind || !ind.primaryId) continue;
+      const e = byId.get(ind.primaryId) || {
+        id: ind.primaryId,
+        // "Mori (Pacifica)" is catalogue disambiguation, not a name a guest
+        // says out loud; the bare name is the display, the id the fallback.
+        name: (ind.nickname || '').replace(/\s*\(.*\)\s*$/, '') || ind.primaryId,
+        thumb: (ind.avatar && ind.avatar.thumbUrl) || null,
+        trips: 0,
+        last: null,
+      };
+      e.trips += 1;
+      if (r.resolved_at && (!e.last || r.resolved_at > e.last)) e.last = r.resolved_at;
+      byId.set(ind.primaryId, e);
+    }
+    return [...byId.values()]
+      .sort((a, b) => b.trips - a.trips || String(b.last).localeCompare(String(a.last)))
+      .slice(0, 12);
+  } catch (e) {
+    console.error('sightings widget: known whales lookup failed:', e.message);
+    return [];
+  }
+}
+
 async function loadOperatorRow(slug) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY;
@@ -268,10 +317,12 @@ module.exports = async function handler(req, res) {
           */
           brand_accent: null,
           brand_logo: null,
+          known_whales: [],
         }
-      : { id: null, slug, show_map_on_widget: true, widget_host_url: null, widget_standalone_url: null, booking_url: null, home_port: null, brand_accent: null, brand_logo: null };
+      : { id: null, slug, show_map_on_widget: true, widget_host_url: null, widget_standalone_url: null, booking_url: null, home_port: null, brand_accent: null, brand_logo: null, known_whales: [] };
 
     if (operator) {
+      opConfig.known_whales = await loadKnownWhales(operator.id);
       const branding = await loadBrandingRow(operator.id);
       if (branding) {
         opConfig.brand_accent = branding.accent_color || branding.brand_color || null;
