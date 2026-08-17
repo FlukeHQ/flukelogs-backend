@@ -1132,10 +1132,27 @@ function refreshMarkers() {
     // grid, so printing coordinates there would imply a precision that
     // isn't real and hand out a waypoint to steer to.
     const coordLine = fmtLatLng(s.lat, s.lng);
+    /*
+      Who was identified on this pin's trip, on humpback pins only. The match
+      belongs to the trip's photos rather than to one surfacing, so every
+      humpback pin of the trip carries the same names; that is the honest
+      granularity, and it is also why this line says "on this trip". Works at
+      every screen size, which the legend shelf does not: phones hide the
+      odds panel, and phones are where guests actually are (Slater,
+      2026-08-17).
+    */
+    const whales = (/humpback/i.test(s.species || '') &&
+      window.__OP_CONFIG && window.__OP_CONFIG.whales_by_trip &&
+      window.__OP_CONFIG.whales_by_trip[s.trip_id]) || [];
+    const whaleLine = whales.length
+      ? `<span style="display:block;margin-top:4px;padding-top:4px;border-top:1px solid rgba(255,255,255,.12);color:#9fd8d3;">
+           Identified: <strong>${whales.slice(0, 3).map(w => w.name).join(', ')}${whales.length > 3 ? ` +${whales.length - 3}` : ''}</strong>
+         </span>`
+      : '';
     m.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
       <strong style="font-size:13px;">${meta.icon} ${s.species || 'Unknown'}</strong><br>
       Count: <strong>${s.count ?? '—'}</strong><br>
-      ${depthLine}${fmtDate(s.trip_date)}${coordLine ? `<br><span style="white-space:nowrap;">${coordLine}</span>` : ''}
+      ${depthLine}${fmtDate(s.trip_date)}${coordLine ? `<br><span style="white-space:nowrap;">${coordLine}</span>` : ''}${whaleLine}
     </div>`);
     m._tripKey = s.trip_id;
     m._species = s.species;

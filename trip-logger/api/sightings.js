@@ -62,7 +62,7 @@ async function loadBrandingRow(operatorId) {
 async function loadKnownWhales(operatorId) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY;
-  if (!url || !key || !operatorId) return [];
+  if (!url || !key || !operatorId) return { shelf: [], byTrip: {} };
   try {
     const q = `happywhale_matches?operator_id=eq.${operatorId}` +
       `&or=(status.eq.matched,review_status.in.(claude_reviewed,human_confirmed))` +
@@ -70,7 +70,7 @@ async function loadKnownWhales(operatorId) {
     const res = await fetch(`${url}/rest/v1/${q}`, {
       headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
     });
-    if (!res.ok) return [];
+    if (!res.ok) return { shelf: [], byTrip: {} };
     const rows = await res.json();
     const byId = new Map();
     for (const r of rows) {
@@ -89,12 +89,43 @@ async function loadKnownWhales(operatorId) {
       if (r.resolved_at && (!e.last || r.resolved_at > e.last)) e.last = r.resolved_at;
       byId.set(ind.primaryId, e);
     }
-    return [...byId.values()]
+    const shelf = [...byId.values()]
       .sort((a, b) => b.trips - a.trips || String(b.last).localeCompare(String(a.last)))
       .slice(0, 12);
+
+    /*
+      Per trip as well, for the map pins. A match hangs off a delivery, and
+      the delivery knows which logged trip it came from, so a humpback pin
+      can honestly name who was identified on ITS trip. Trip is the true
+      granularity: a match belongs to a photo from the trip, not to one pin,
+      so every humpback pin of that trip carries the same short list.
+    */
+    const deliveryIds = [...new Set(rows.map(r => r.delivery_id).filter(Boolean))];
+    const byTrip = {};
+    if (deliveryIds.length) {
+      const dres = await fetch(
+        `${url}/rest/v1/deliveries?id=in.(${deliveryIds.join(',')})&select=id,logbook_trip_id`,
+        { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
+      );
+      if (dres.ok) {
+        const dels = await dres.json();
+        const tripOf = new Map(dels.map(d => [d.id, d.logbook_trip_id]));
+        for (const r of rows) {
+          const ind = r.individual && r.individual.individual;
+          const tripId = tripOf.get(r.delivery_id);
+          if (!ind || !ind.primaryId || !tripId) continue;
+          const list = byTrip[tripId] || (byTrip[tripId] = []);
+          const name = (ind.nickname || '').replace(/\s*\(.*\)\s*$/, '') || ind.primaryId;
+          if (!list.some(w => w.id === ind.primaryId)) {
+            list.push({ id: ind.primaryId, name, thumb: (ind.avatar && ind.avatar.thumbUrl) || null });
+          }
+        }
+      }
+    }
+    return { shelf, byTrip };
   } catch (e) {
     console.error('sightings widget: known whales lookup failed:', e.message);
-    return [];
+    return { shelf: [], byTrip: {} };
   }
 }
 
@@ -318,11 +349,14 @@ module.exports = async function handler(req, res) {
           brand_accent: null,
           brand_logo: null,
           known_whales: [],
+          whales_by_trip: {},
         }
-      : { id: null, slug, show_map_on_widget: true, widget_host_url: null, widget_standalone_url: null, booking_url: null, home_port: null, brand_accent: null, brand_logo: null, known_whales: [] };
+      : { id: null, slug, show_map_on_widget: true, widget_host_url: null, widget_standalone_url: null, booking_url: null, home_port: null, brand_accent: null, brand_logo: null, known_whales: [], whales_by_trip: {} };
 
     if (operator) {
-      opConfig.known_whales = await loadKnownWhales(operator.id);
+      const kw = await loadKnownWhales(operator.id);
+      opConfig.known_whales = kw.shelf;
+      opConfig.whales_by_trip = kw.byTrip;
       const branding = await loadBrandingRow(operator.id);
       if (branding) {
         opConfig.brand_accent = branding.accent_color || branding.brand_color || null;
