@@ -1902,7 +1902,7 @@
           <!-- Recent only. This screen is for a captain deciding where to
                point the bow, and whales move; a week ago is history and
                history lives on the public widget (Slater, 2026-08-18). -->
-          <button type="button" class="chip" data-cap-range="1" onclick="setCaptainSightingsRange(1)">Today</button>
+          <button type="button" class="chip" data-cap-range="yesterday" onclick="setCaptainSightingsRange('yesterday')">Yesterday</button>
           <button type="button" class="chip active" data-cap-range="3" onclick="setCaptainSightingsRange(3)">3 days</button>
         </div>
       </div>
@@ -5890,9 +5890,23 @@
   function filteredCaptainSightings() {
     const range = captainSightingsState.rangeDays;
     let rows = captainSightingsState.rows;
-    if (range !== 'all') {
-      const cutoff = new Date(Date.now() - parseInt(range, 10) * 86400000);
-      const cutoffKey = cutoff.toISOString().slice(0, 10);
+    // Local calendar dates, not UTC: a captain at 7am Pacific is planning
+    // against yesterday's trips, and a UTC cutoff would already call part of
+    // yesterday "two days ago" by evening.
+    const localKey = (d) => {
+      const p = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    };
+    if (range === 'yesterday') {
+      // Exactly the previous calendar day. Not "today", which at the hour a
+      // captain plans a morning departure is an empty map (Slater,
+      // 2026-08-18): what they want is what the boats found yesterday.
+      const y = new Date(); y.setDate(y.getDate() - 1);
+      const key = localKey(y);
+      rows = rows.filter(r => (r.trip_date || '') === key);
+    } else if (range !== 'all') {
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - parseInt(range, 10));
+      const cutoffKey = localKey(cutoff);
       rows = rows.filter(r => (r.trip_date || '') >= cutoffKey);
     }
     return rows;
