@@ -1899,18 +1899,16 @@
       <div class="section-label">Sightings</div>
       <div class="admin-sightings-filters" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;">
         <div class="admin-sightings-chips" role="tablist" style="display:flex;gap:6px;">
-          <button type="button" class="chip" data-cap-range="7"   onclick="setCaptainSightingsRange(7)">7d</button>
-          <button type="button" class="chip active" data-cap-range="30"  onclick="setCaptainSightingsRange(30)">30d</button>
-          <button type="button" class="chip" data-cap-range="all" onclick="setCaptainSightingsRange('all')">All</button>
+          <!-- Recent only. This screen is for a captain deciding where to
+               point the bow, and whales move; a week ago is history and
+               history lives on the public widget (Slater, 2026-08-18). -->
+          <button type="button" class="chip" data-cap-range="1" onclick="setCaptainSightingsRange(1)">Today</button>
+          <button type="button" class="chip active" data-cap-range="3" onclick="setCaptainSightingsRange(3)">3 days</button>
         </div>
       </div>
       <div id="captainSightingsMap" style="height:360px;border-radius:8px;overflow:hidden;background:#0e1620;margin-bottom:14px;"></div>
       <div class="admin-sightings-listbar" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
         <div id="captainSightingsCount" style="font-size:12px;color:var(--text-dim);"></div>
-        <div class="admin-sightings-chips admin-sightings-view-toggle" role="tablist" style="display:flex;gap:6px;">
-          <button type="button" class="chip"        data-cap-view="individual" onclick="setCaptainSightingsView('individual')">Individual</button>
-          <button type="button" class="chip active" data-cap-view="grouped"    onclick="setCaptainSightingsView('grouped')">Grouped</button>
-        </div>
       </div>
       <div id="captainSightingsTable"><div class="empty">Loading…</div></div>
       <button class="btn btn-outline" type="button" onclick="goHome()" style="margin-top:14px;">Back</button>
@@ -2878,6 +2876,11 @@
     });
     if (trip.liveId) livePendingPoints.push({ lat: newLat, lng: newLng, t: new Date().toISOString() });
     flActivity.position(newLat, newLng);
+    // Keep the boat honest on the sightings map if that screen is open: a
+    // captain comparing "here" to yesterday's pins needs "here" to move.
+    if (captainSightingsState.map && document.getElementById('screenCaptainSightings').classList.contains('active')) {
+      renderCaptainSightingsBoat();
+    }
     flFence.feed(newLat, newLng);
     document.getElementById('statGPS').textContent = fmtLatLng(newLat, newLng);
     document.getElementById('statDistance').textContent = trip.distanceNM.toFixed(2) + ' NM';
@@ -5765,6 +5768,8 @@
       const n = Number(r.count) || 0;
       trip.species.set(r.species, (trip.species.get(r.species) || 0) + n);
       trip.animals += n;
+      trip.sightingCount = (trip.sightingCount || 0) + 1;
+      (trip.times = trip.times || []).push(r.sighting_time ? String(r.sighting_time).slice(0, 5) : null);
     });
     const dateLabel = (key) => {
       // key is YYYY-MM-DD; render as "Wednesday, May 6, 2026"
@@ -5807,9 +5812,10 @@
 
   const captainSightingsState = {
     rows: [],
-    // Same calm defaults as the admin screen: recent + grouped.
-    rangeDays: '30',
+    // Three days, grouped, boat drawn. See the range chips for why so short.
+    rangeDays: '3',
     viewMode: 'grouped',
+    boatMarker: null,
     showAll: false,
     focusedTripKey: null,
     map: null,
@@ -5903,11 +5909,28 @@
       ? rows.filter(r => (r.trip_id || r.trip_date) === focused)
       : rows;
     renderCaptainSightingsMarkers(mapRows);
-    if (captainSightingsState.viewMode === 'grouped') {
-      renderCaptainSightingsGrouped(rows);
-    } else {
-      renderCaptainSightingsTable(rows);
-    }
+    renderCaptainSightingsGrouped(rows);
+    renderCaptainSightingsBoat();
+  }
+
+  /*
+    The boat, on the sightings map. The whole reason a captain opens this
+    screen mid-trip is "am I anywhere near where they were?", which is
+    unanswerable without knowing where "I" is. Uses the last fix the running
+    trip recorded; with no trip running there is no boat to draw. Redrawn on
+    every render so it follows the boat while the screen is open.
+  */
+  function renderCaptainSightingsBoat() {
+    const map = captainSightingsState.map;
+    if (!map) return;
+    if (captainSightingsState.boatMarker) { map.removeLayer(captainSightingsState.boatMarker); captainSightingsState.boatMarker = null; }
+    if (!trip.startTime || trip.endTime || trip.lastLat == null || trip.lastLng == null) return;
+    const icon = L.divIcon({
+      className: '',
+      iconSize: [22, 22], iconAnchor: [11, 11],
+      html: `<div style="width:22px;height:22px;border-radius:50%;background:var(--teal);border:3px solid #fff;box-shadow:0 0 0 6px rgba(111,177,172,.28),0 2px 8px rgba(0,0,0,.5);"></div>`,
+    });
+    captainSightingsState.boatMarker = L.marker([trip.lastLat, trip.lastLng], { icon, interactive: false, zIndexOffset: 1000 }).addTo(map);
   }
 
   function clearCaptainSightingsFocus() {
@@ -6038,23 +6061,27 @@
         });
       } catch { return key || ''; }
     };
+    /*
+      Dates and times, nothing else. The species tally moved off this card
+      on purpose: a captain at the helm wants "when were we finding them",
+      and the map already colours the pins by species. What was seen, in
+      detail, is the public widget's job (Slater, 2026-08-18).
+
+      Times are the sighting times of that trip, first to last, so a card
+      reads "Monday · 9:27 AM to 10:59 AM": the window the animals were up.
+    */
     tbl.innerHTML = Array.from(trips.entries()).map(([tripKey, trip]) => {
-      const tally = Array.from(trip.species.entries())
-        .sort((a, b) => b[1] - a[1])
-        .map(([species, count]) => {
-          const meta = ADMIN_SIGHTINGS_SPECIES_META[species] || ADMIN_SIGHTINGS_SPECIES_META['default'];
-          return `<div class="grouped-species-row" style="cursor:pointer;" onclick="event.stopPropagation(); focusCaptainTripSpecies('${jsAttrStr(tripKey)}', '${jsAttrStr(species)}')">
-            <span class="species-dot" style="background:${meta.color};border:1px solid ${meta.borderColor || '#000'};"></span>
-            <span class="grouped-species-name">${escapeHtml(species || 'Unknown')}</span>
-            <span class="grouped-species-count">×${count}</span>
-          </div>`;
-        }).join('');
+      const times = (trip.times || []).filter(Boolean).sort();
+      const fmtT = (t) => { const [h, m] = String(t).split(':'); const hh = parseInt(h, 10); return `${((hh + 11) % 12) + 1}:${m} ${hh < 12 ? 'AM' : 'PM'}`; };
+      const window = times.length === 0 ? ''
+        : times.length === 1 ? fmtT(times[0])
+        : `${fmtT(times[0])} to ${fmtT(times[times.length - 1])}`;
+      const n = trip.sightingCount || 0;
       return `<div class="grouped-trip-card" style="cursor:pointer;" onclick="focusCaptainTripSpecies('${jsAttrStr(tripKey)}', null)">
         <div class="grouped-trip-header">
           <div class="grouped-trip-title">${escapeHtml(dateLabel(trip.trip_date))}${trip.trip_part ? ' · ' + escapeHtml(trip.trip_part) : ''}</div>
-          <div class="grouped-trip-summary">${trip.species.size} SPECIES · ${trip.animals} ANIMALS</div>
+          <div class="grouped-trip-summary">${window ? escapeHtml(window) + ' · ' : ''}${n} SIGHTING${n === 1 ? '' : 'S'}</div>
         </div>
-        <div class="grouped-species-list">${tally}</div>
       </div>`;
     }).join('');
   }
