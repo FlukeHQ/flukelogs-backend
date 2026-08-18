@@ -1931,6 +1931,14 @@
           <button type="button" class="chip" data-cap-range="3" onclick="setCaptainSightingsRange(3)">3 days</button>
           <button type="button" class="chip" data-cap-range="30" onclick="setCaptainSightingsRange(30)">30 days</button>
         </div>
+        <!-- One animal, all of history. A different question from the range
+             chips ("where have we ever found blue whales?" vs "what was out
+             yesterday?"), so picking a species switches the range to All and
+             the pins go back to every trip on record. Choosing All species
+             returns to the range that was set (Slater, 2026-08-18). -->
+        <select id="captainSpeciesFilter" class="chip" style="margin-left:auto;appearance:none;-webkit-appearance:none;padding-right:26px;background-image:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%226%22 viewBox=%220 0 10 6%22><path d=%22M1 1l4 4 4-4%22 stroke=%22%23aab4b8%22 stroke-width=%221.5%22 fill=%22none%22/></svg>');background-repeat:no-repeat;background-position:right 10px center;" onchange="setCaptainSpecies(this.value)">
+          <option value="">All species</option>
+        </select>
       </div>
       <div id="captainSightingsMap" style="height:360px;border-radius:8px;overflow:hidden;background:#0e1620;margin-bottom:14px;"></div>
       <div class="admin-sightings-listbar" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
@@ -5917,6 +5925,10 @@
     rangeDays: 'yesterday',
     viewMode: 'grouped',
     boatMarker: null,
+    // A species pick shows every trip on record for that animal; the range
+    // chips are put back when the pick is cleared.
+    species: '',
+    rangeBeforeSpecies: null,
     showAll: false,
     focusedTripKey: null,
     map: null,
@@ -5931,10 +5943,11 @@
     try {
       const [, res] = await Promise.all([
         loadLeaflet(),
-        fetch('/api/operator/sightings', { headers: await adminAuthHeader() }),
+        fetch('/api/operator/sightings?limit=2000', { headers: await adminAuthHeader() }),
       ]);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       captainSightingsState.rows = await res.json();
+      populateCaptainSpecies();
       initCaptainSightingsMap();
       renderCaptainSightings();
     } catch (err) {
@@ -5969,6 +5982,14 @@
   }
 
   function setCaptainSightingsRange(range) {
+    // Tapping a range while an animal is picked means "back to the timeline":
+    // clear the animal so the chip does what it says.
+    if (captainSightingsState.species) {
+      captainSightingsState.species = '';
+      captainSightingsState.rangeBeforeSpecies = null;
+      const sel = document.getElementById('captainSpeciesFilter');
+      if (sel) sel.value = '';
+    }
     captainSightingsState.rangeDays = range;
     captainSightingsState.showAll = false;
     clearCaptainSightingsFocus();
@@ -5976,6 +5997,41 @@
       c.classList.toggle('active', String(c.dataset.capRange) === String(range));
     });
     renderCaptainSightings();
+  }
+
+  function setCaptainSpecies(name) {
+    const st = captainSightingsState;
+    st.species = name || '';
+    st.showAll = false;
+    clearCaptainSightingsFocus();
+    if (st.species) {
+      if (st.rangeBeforeSpecies === null) st.rangeBeforeSpecies = st.rangeDays;
+      st.rangeDays = 'all';
+    } else if (st.rangeBeforeSpecies !== null) {
+      st.rangeDays = st.rangeBeforeSpecies;
+      st.rangeBeforeSpecies = null;
+    }
+    document.querySelectorAll('#screenCaptainSightings .chip[data-cap-range]').forEach(c => {
+      c.classList.toggle('active', String(c.dataset.capRange) === String(st.rangeDays));
+    });
+    renderCaptainSightings();
+  }
+
+  // Every species this operator has ever logged, most seen first, so the
+  // list is theirs and not a catalogue.
+  function populateCaptainSpecies() {
+    const sel = document.getElementById('captainSpeciesFilter');
+    if (!sel) return;
+    const counts = new Map();
+    for (const r of captainSightingsState.rows) {
+      const k = r.species || '';
+      if (!k) continue;
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    const names = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
+    sel.innerHTML = '<option value="">All species</option>' +
+      names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+    sel.value = captainSightingsState.species || '';
   }
 
   function setCaptainSightingsView(mode) {
@@ -5998,7 +6054,12 @@
       const p = (n) => String(n).padStart(2, '0');
       return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
     };
-    if (range === 'yesterday') {
+    if (captainSightingsState.species) {
+      rows = rows.filter(r => (r.species || '') === captainSightingsState.species);
+    }
+    if (range === 'all') {
+      // fall through: every row
+    } else if (range === 'yesterday') {
       // Exactly the previous calendar day. Not "today", which at the hour a
       // captain plans a morning departure is an empty map (Slater,
       // 2026-08-18): what they want is what the boats found yesterday.
@@ -6017,8 +6078,9 @@
     const rows = filteredCaptainSightings();
     const tripKeys = new Set(rows.map(r => r.trip_id || r.trip_date));
     const tripCount = tripKeys.size;
+    const sp = captainSightingsState.species;
     document.getElementById('captainSightingsCount').textContent =
-      `${rows.length} sighting${rows.length === 1 ? '' : 's'} · ${tripCount} trip${tripCount === 1 ? '' : 's'}`;
+      `${rows.length} ${sp ? escapeHtml(sp) + ' sighting' : 'sighting'}${rows.length === 1 ? '' : 's'} · ${tripCount} trip${tripCount === 1 ? '' : 's'}${sp ? ' · all time' : ''}`;
     const focused = captainSightingsState.focusedTripKey;
     const mapRows = focused
       ? rows.filter(r => (r.trip_id || r.trip_date) === focused)
