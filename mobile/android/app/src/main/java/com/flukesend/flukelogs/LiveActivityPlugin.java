@@ -63,11 +63,10 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 )
 public class LiveActivityPlugin extends Plugin {
 
-    // Channels. Trip is low importance so the ongoing notice sits quietly;
-    // Alerts is high so the dock question actually shows on the lock screen.
-    static final String CH_TRIP = "flukelogs_trip";
+    // One channel, high importance, so the dock question shows on the lock
+    // screen. The recording-in-progress notification is the geolocation
+    // plugin's foreground service, not ours (see startTrip).
     static final String CH_ALERTS = "flukelogs_alerts";
-    static final int ID_TRIP = 4101;
     static final int ID_FENCE = 4102;
 
     // Broadcast actions carried by the notification buttons. The receiver
@@ -133,11 +132,8 @@ public class LiveActivityPlugin extends Plugin {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationManager nm = getContext().getSystemService(NotificationManager.class);
         if (nm == null) return;
-        NotificationChannel trip = new NotificationChannel(CH_TRIP, "Trip in progress", NotificationManager.IMPORTANCE_LOW);
-        trip.setDescription("Shown while Flukelogs is recording a trip.");
         NotificationChannel alerts = new NotificationChannel(CH_ALERTS, "Trip alerts", NotificationManager.IMPORTANCE_HIGH);
         alerts.setDescription("Back at the dock reminders.");
-        nm.createNotificationChannel(trip);
         nm.createNotificationChannel(alerts);
     }
 
@@ -178,10 +174,21 @@ public class LiveActivityPlugin extends Plugin {
       moved to promptStillLogging, the first moment a notification is
       actually needed, which is at the dock, long after location settled.
     */
+    /*
+      startTrip and updateTrip post NOTHING on Android as of 1.1.2.
+
+      The background-geolocation plugin runs a foreground service, and a
+      foreground service on Android IS a persistent notification: that is the
+      "Trip in progress" card captains already saw on 1.0.1, and it is the
+      mechanism that keeps location alive with the screen off. 1.1.0 posted a
+      second ongoing card from this plugin, on its own channel, and the two
+      fought. The plugin's service was disrupted and background location went
+      with it: four points in two hours on a phone that recorded 500 the day
+      before. One ongoing notification per app, and it belongs to the thing
+      doing the recording. This plugin keeps only the dock prompt.
+    */
     @PluginMethod
     public void startTrip(PluginCall call) {
-        String boat = call.getString("boatName", "Flukelogs");
-        postOngoing(boat, "Recording your route");
         JSObject r = new JSObject();
         r.put("started", true);
         call.resolve(r);
@@ -195,21 +202,14 @@ public class LiveActivityPlugin extends Plugin {
 
     @PluginMethod
     public void updateTrip(PluginCall call) {
-        String boat = call.getString("boatName", "Flukelogs");
-        String pos = call.getString("positionText", null);
-        Double nm = call.getDouble("distanceNm");
-        StringBuilder line = new StringBuilder();
-        if (pos != null && !pos.isEmpty()) line.append(pos);
-        if (nm != null && nm > 0) { if (line.length() > 0) line.append("  ·  "); line.append(String.format("%.1f NM", nm)); }
-        postOngoing(boat, line.length() > 0 ? line.toString() : "Recording your route");
+        // Accepted for API parity with iOS; nothing to update on Android now
+        // that the ongoing card belongs to the geolocation service.
         call.resolve();
     }
 
     @PluginMethod
     public void endTrip(PluginCall call) {
-        NotificationManagerCompat nm = NotificationManagerCompat.from(getContext());
-        nm.cancel(ID_TRIP);
-        nm.cancel(ID_FENCE);
+        NotificationManagerCompat.from(getContext()).cancel(ID_FENCE);
         call.resolve();
     }
 
@@ -266,20 +266,6 @@ public class LiveActivityPlugin extends Plugin {
         call.resolve();
     }
 
-    private void postOngoing(String title, String text) {
-        NotificationCompat.Builder b = new NotificationCompat.Builder(getContext(), CH_TRIP)
-            .setSmallIcon(getContext().getApplicationInfo().icon)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setContentIntent(openApp(null, 4));
-        try {
-            NotificationManagerCompat.from(getContext()).notify(ID_TRIP, b.build());
-        } catch (SecurityException ignored) {}
-    }
 
     static LiveActivityPlugin current() { return instance; }
 }
