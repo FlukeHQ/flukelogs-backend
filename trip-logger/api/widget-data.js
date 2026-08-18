@@ -79,13 +79,41 @@ async function getLiveBlock(operator, showMap) {
 
   const allRows = await pgGet(
     `live_trips?operator_id=eq.${operator.id}&ended_at=is.null` +
-    `&select=started_at,last_seen_at,status_species,status_at,track,sightings,boat_id,boat_name` +
+    `&select=trip_id,started_at,last_seen_at,status_species,status_at,track,sightings,boat_id,boat_name` +
     `&order=last_seen_at.desc&limit=10`
   );
   if (!allRows || !allRows.length) return null;
 
   const now = Date.now();
   const rows = allRows.filter(r => now - Date.parse(r.last_seen_at) <= LIVE_STALE_MINUTES * 60000);
+
+  /*
+    Close what this read just filtered out, so the database agrees with the
+    map. The stale-closer in live-trip.js only runs when a heartbeat arrives
+    for the operator, so the LAST broadcast of a day, if it dies, has nobody
+    to close it: on 2026-08-17 a Princess phone tapped Start at 15:52, sent
+    zero points, and sat open for sixteen hours. Guests never saw it (the
+    filter above hid it), but every "is a boat out?" check, including the one
+    that gates deploys, said yes.
+
+    This read fires on every widget load, which is exactly the cadence a
+    janitor wants. Fire and forget: a failed close is untidy, not a broken
+    page. Rows quiet for over 45 minutes are closed at their own last beat.
+  */
+  const STALE_CLOSE_MS = 45 * 60 * 1000;
+  const dead = allRows.filter(r => now - Date.parse(r.last_seen_at) > STALE_CLOSE_MS);
+  if (dead.length) {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SECRET_KEY;
+    for (const r of dead) {
+      fetch(`${url}/rest/v1/live_trips?trip_id=eq.${r.trip_id}&operator_id=eq.${operator.id}&ended_at=is.null`, {
+        method: 'PATCH',
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ ended_at: r.last_seen_at, ended_reason: 'auto_stale' }),
+      }).catch(() => {});
+    }
+  }
+
   if (!rows.length) return null;
 
   // Per-boat color, same assignment as the FlukeSend boat QR cards: one
