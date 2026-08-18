@@ -160,43 +160,37 @@ public class LiveActivityPlugin extends Plugin {
     // ── JS surface, mirroring iOS ────────────────────────────────────
 
     /*
-      Called by the web layer at Start Trip on both platforms. On Android 13+
-      posting anything needs the runtime POST_NOTIFICATIONS grant, so ask
-      here, at the same moment iOS asks (its plugin requests authorization in
-      startTrip too), then post the ongoing card. Resolves {started:true}
-      because the web layer reads that field to decide whether the native
-      side is up; iOS uses it for Live Activity availability, here it means
-      the ongoing notification exists.
+      Called by the web layer at Start Trip on both platforms.
+
+      1.1.0 asked for POST_NOTIFICATIONS right here, and it broke GPS on the
+      one Android phone we have. Start Trip is also the moment the
+      background-geolocation plugin requests location, and two runtime
+      permission dialogs fired together on Android means one of them loses:
+      MJ's location grant lost, the plugin fell back to coarse network fixes,
+      and her 2026-08-18 morning trip recorded four points in two hours where
+      the day before, on 1.0.1, the same phone recorded 500. Same boat, same
+      phone, one day apart. The update was the only variable.
+
+      So this NEVER asks for anything. It posts the ongoing card if it is
+      allowed to, and if it is not allowed the card is simply absent, which
+      is what iOS does for a captain who declined. Recording does not depend
+      on notifications and must never wait on them. The notification ask
+      moved to promptStillLogging, the first moment a notification is
+      actually needed, which is at the dock, long after location settled.
     */
     @PluginMethod
     public void startTrip(PluginCall call) {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(getContext(), android.Manifest.permission.POST_NOTIFICATIONS)
-                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            pendingStart = call;
-            call.setKeepAlive(true);
-            requestPermissionForAlias("notifications", call, "onNotifPermission");
-            return;
-        }
-        finishStart(call);
-    }
-
-    private PluginCall pendingStart;
-
-    @com.getcapacitor.annotation.PermissionCallback
-    private void onNotifPermission(PluginCall call) {
-        // Post regardless of the answer: denied means the OS drops the card
-        // silently and the app still records, which is the same behaviour a
-        // captain who declined on iOS gets.
-        finishStart(call);
-    }
-
-    private void finishStart(PluginCall call) {
         String boat = call.getString("boatName", "Flukelogs");
         postOngoing(boat, "Recording your route");
         JSObject r = new JSObject();
         r.put("started", true);
         call.resolve(r);
+    }
+
+    private boolean canPost() {
+        return Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(getContext(), android.Manifest.permission.POST_NOTIFICATIONS)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED;
     }
 
     @PluginMethod
@@ -219,8 +213,31 @@ public class LiveActivityPlugin extends Plugin {
         call.resolve();
     }
 
+    /*
+      The dock question. This is where the notification permission is asked,
+      if it has not been yet: it is the first time the app needs to post
+      anything the captain must see, and by now location has been settled for
+      an entire trip, so there is no dialog for it to collide with. If they
+      decline, the web layer's in-app fallback still asks the question on the
+      screen the next time the app is opened, so nothing is lost but the
+      lock screen shortcut.
+    */
     @PluginMethod
     public void promptStillLogging(PluginCall call) {
+        if (!canPost()) {
+            call.setKeepAlive(true);
+            requestPermissionForAlias("notifications", call, "onNotifPermissionThenPrompt");
+            return;
+        }
+        postFencePrompt(call);
+    }
+
+    @com.getcapacitor.annotation.PermissionCallback
+    private void onNotifPermissionThenPrompt(PluginCall call) {
+        postFencePrompt(call);
+    }
+
+    private void postFencePrompt(PluginCall call) {
         String title = call.getString("title", "Back at the dock?");
         String body = call.getString("body", "Still logging whales?");
         NotificationCompat.Builder b = new NotificationCompat.Builder(getContext(), CH_ALERTS)
