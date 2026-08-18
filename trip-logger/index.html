@@ -6058,7 +6058,16 @@
     if (captainSightingsState.clusterLayer) { map.removeLayer(captainSightingsState.clusterLayer); captainSightingsState.clusterLayer = null; }
     captainSightingsState.markers.forEach(m => map.removeLayer(m));
     captainSightingsState.markers = [];
-    const cluster = makeSightingsClusterLayer();
+    /*
+      No clustering on the captain map. Clustering earns its keep against
+      hundreds of pins over months; with Yesterday and 3 days as the ranges
+      here there are a dozen or two, and a captain wants to see every one
+      where it actually was, not a bubble reading "6" that hides them
+      (Slater, 2026-08-18). The admin map keeps its clusters: it spans the
+      whole season. Only the 30 day view could get busy, and busy raw pins
+      still beat pins hidden.
+    */
+    const cluster = null;
     const latlngs = [];
     rows.forEach(r => {
       if (r.lat == null || r.lng == null) return;
