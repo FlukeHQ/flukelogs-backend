@@ -432,6 +432,11 @@
     box-shadow: 0 14px 28px rgba(0,0,0,.45);
   }
   .live-overlay.on { display: flex; }
+  /* Stale: the boat is out but the position is old. The pulse stops and the
+     colour cools, so nothing on screen reads as "here it is right now". */
+  .now-banner.is-stale .now-dot { animation: none; background: var(--text-dim); box-shadow: none; }
+  .now-banner.is-stale .now-label { color: var(--text-dim); }
+  .live-boat.is-stale { opacity: 0.55; }
   .live-overlay .now-dot { background: #ff6b6b; box-shadow: 0 0 12px #ff6b6b; animation-duration: 1.4s; width: 10px; height: 10px; }
   .live-overlay .now-label { color: #ff6b6b; font-size: clamp(9px, 1.1vw, 12px); }
   .live-overlay .now-species { font-size: clamp(15px, 2.2vw, 26px); }
@@ -1747,6 +1752,14 @@ function liveStatusText(live) {
   const since = starts.length ? fmtClock(new Date(Math.min(...starts)).toISOString()) : null;
   let meta = since ? `On the water since ${since}` : '';
   if (boats.length > 1) meta = `${boats.length} boats out${meta ? ' · ' + meta : ''}`;
+  // Out of range: say so plainly rather than letting a stale dot imply a
+  // current position. The species line above stays true regardless, since a
+  // whale logged at 1:43 was logged at 1:43.
+  if (live && live.stale) {
+    const age = live.position_age_min;
+    const ago = age >= 60 ? `${Math.round(age / 60)}h` : `${age} min`;
+    meta = `Out of cell range · last position ${ago} ago${meta ? ' · ' + meta : ''}`;
+  }
   return { species, meta };
 }
 
@@ -1789,7 +1802,17 @@ function renderLive(live) {
     }
   }
   banner.classList.add('is-live');
-  label.textContent = 'Live · On the water now';
+  /*
+    Live only means live. A boat past cell range is still out, and the widget
+    keeps showing it (see widget-data getLiveBlock), but it must not claim a
+    position it does not have: the label switches to "On the water" and the
+    meta line says how old the last position is. Guests get the truth either
+    way, and an office display stops looking like the trip ended when it is
+    only the signal that stopped.
+  */
+  const stale = !!live.stale;
+  banner.classList.toggle('is-stale', stale);
+  label.textContent = stale ? 'On the water' : 'Live · On the water now';
   const status = liveStatusText(live);
   document.getElementById('now-species').textContent = status.species;
   document.getElementById('now-meta').textContent = status.meta;
