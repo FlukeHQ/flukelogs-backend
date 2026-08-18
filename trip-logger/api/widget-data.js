@@ -74,6 +74,8 @@ async function pgGet(pathAndQuery) {
 // mirroring boats[0], so widget pages loaded before this shape existed keep
 // working — and with one boat out the response is identical to what it
 // always was.
+const STALE_CLOSE_MS = 45 * 60 * 1000;
+
 async function getLiveBlock(operator, showMap) {
   if (!operator.live_widget_enabled) return null;
 
@@ -85,7 +87,22 @@ async function getLiveBlock(operator, showMap) {
   if (!allRows || !allRows.length) return null;
 
   const now = Date.now();
-  const rows = allRows.filter(r => now - Date.parse(r.last_seen_at) <= LIVE_STALE_MINUTES * 60000);
+  /*
+    A boat out of cell range is still out.
+
+    The widget used to hide any boat quiet for more than LIVE_STALE_MINUTES,
+    so a trip that went past coverage vanished from the page entirely, and to
+    a guest that is indistinguishable from a finished trip. On 2026-08-18 a
+    Princess boat logged two humpbacks 20 km out and dropped off the map
+    seventeen seconds later; the office display showed nothing for the rest of
+    the trip while the boat was very much on the water.
+
+    So a boat stays on the page until the stale close at 45 minutes, and the
+    payload says how old its position is. What must NOT happen is claiming it
+    is live when it is not: the widget renders a different, honest line once
+    the position ages past LIVE_STALE_MINUTES (see renderLive).
+  */
+  const rows = allRows.filter(r => now - Date.parse(r.last_seen_at) <= STALE_CLOSE_MS);
 
   /*
     Close what this read just filtered out, so the database agrees with the
@@ -100,7 +117,6 @@ async function getLiveBlock(operator, showMap) {
     janitor wants. Fire and forget: a failed close is untidy, not a broken
     page. Rows quiet for over 45 minutes are closed at their own last beat.
   */
-  const STALE_CLOSE_MS = 45 * 60 * 1000;
   const dead = allRows.filter(r => now - Date.parse(r.last_seen_at) > STALE_CLOSE_MS);
   if (dead.length) {
     const url = process.env.SUPABASE_URL;
@@ -156,6 +172,10 @@ async function getLiveBlock(operator, showMap) {
   for (const row of rows) {
     const boat = {
       started_at: row.started_at,
+      // Minutes since this boat's last heartbeat. 0 while beating normally;
+      // once past LIVE_STALE_MINUTES the widget stops saying live and says
+      // how old the position is instead.
+      position_age_min: Math.max(0, Math.round((now - Date.parse(row.last_seen_at)) / 60000)),
       species: row.status_species || null,
       // When the species is fresh the boat is "watching"; once it ages out,
       // species_at lets the widget say when it was last spotted instead of
@@ -204,8 +224,13 @@ async function getLiveBlock(operator, showMap) {
   }
   if (!boats.length) return null;
 
+  // active stays true (a boat is out), but stale says whether any of them is
+  // still reporting. The widget words its banner from these two together.
+  const freshest = Math.min(...boats.map(b => b.position_age_min));
   return Object.assign({}, boats[0], {
     active: true,
+    stale: freshest > LIVE_STALE_MINUTES,
+    position_age_min: freshest,
     delay_minutes: delayMin,
     boats,
   });
