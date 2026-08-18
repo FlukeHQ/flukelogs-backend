@@ -1025,6 +1025,31 @@
     }
     :where(#screenAdminSightings, #screenCaptainSightings) .grouped-species-row:first-child { border-top: none; }
     :where(#screenAdminSightings, #screenCaptainSightings) .grouped-trip-card:hover { background: rgba(255,255,255,0.03); }
+    /* Captain log pager. Each .cap-log-page holds three cards and is exactly
+       the viewport tall, so scroll-snap lands page to page: the three cards
+       travel together. mandatory + contain so a flick never strands the
+       list between pages or scrolls the screen behind it. */
+    .cap-log-pager {
+      height: 264px;
+      overflow-y: auto;
+      scroll-snap-type: y mandatory;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .cap-log-pager::-webkit-scrollbar { display: none; }
+    .cap-log-page {
+      height: 264px;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
+      display: grid;
+      grid-template-rows: repeat(3, 1fr);
+      gap: 10px;
+      padding-bottom: 10px;
+      box-sizing: border-box;
+    }
+    .cap-log-page .grouped-trip-card { margin-bottom: 0; min-height: 0; display: flex; align-items: center; }
+    .cap-log-page .grouped-trip-header { width: 100%; }
     :where(#screenAdminSightings, #screenCaptainSightings) .grouped-species-row:hover { background: rgba(255,255,255,0.04); border-radius: 4px; }
     :where(#screenAdminSightings, #screenCaptainSightings) .grouped-species-name {
       flex: 1;
@@ -1899,20 +1924,26 @@
       <div class="section-label">Sightings</div>
       <div class="admin-sightings-filters" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;">
         <div class="admin-sightings-chips" role="tablist" style="display:flex;gap:6px;">
-          <button type="button" class="chip" data-cap-range="7"   onclick="setCaptainSightingsRange(7)">7d</button>
-          <button type="button" class="chip active" data-cap-range="30"  onclick="setCaptainSightingsRange(30)">30d</button>
-          <button type="button" class="chip" data-cap-range="all" onclick="setCaptainSightingsRange('all')">All</button>
+          <!-- Recent only. This screen is for a captain deciding where to
+               point the bow, and whales move; a week ago is history and
+               history lives on the public widget (Slater, 2026-08-18). -->
+          <button type="button" class="chip active" data-cap-range="yesterday" onclick="setCaptainSightingsRange('yesterday')">Yesterday</button>
+          <button type="button" class="chip" data-cap-range="3" onclick="setCaptainSightingsRange(3)">3 days</button>
+          <button type="button" class="chip" data-cap-range="30" onclick="setCaptainSightingsRange(30)">30 days</button>
         </div>
       </div>
       <div id="captainSightingsMap" style="height:360px;border-radius:8px;overflow:hidden;background:#0e1620;margin-bottom:14px;"></div>
       <div class="admin-sightings-listbar" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
         <div id="captainSightingsCount" style="font-size:12px;color:var(--text-dim);"></div>
-        <div class="admin-sightings-chips admin-sightings-view-toggle" role="tablist" style="display:flex;gap:6px;">
-          <button type="button" class="chip"        data-cap-view="individual" onclick="setCaptainSightingsView('individual')">Individual</button>
-          <button type="button" class="chip active" data-cap-view="grouped"    onclick="setCaptainSightingsView('grouped')">Grouped</button>
-        </div>
       </div>
-      <div id="captainSightingsTable"><div class="empty">Loading…</div></div>
+      <!-- Scrolls in place at roughly three cards tall so the map above never
+           leaves the screen: the whole point is comparing the list to the
+           pins, and a long list used to push the map out of view. -->
+      <!-- Paged, not free scrolling: cards are grouped three to a page and
+           the list snaps a whole page at a time, so a swipe reads as
+           Mon-Wed, then Thu-Sat, three cards moving as one strip under the
+           finger (Slater, 2026-08-18). -->
+      <div id="captainSightingsTable" class="cap-log-pager"><div class="empty">Loading…</div></div>
       <button class="btn btn-outline" type="button" onclick="goHome()" style="margin-top:14px;">Back</button>
     </div>
   </div>
@@ -2878,6 +2909,11 @@
     });
     if (trip.liveId) livePendingPoints.push({ lat: newLat, lng: newLng, t: new Date().toISOString() });
     flActivity.position(newLat, newLng);
+    // Keep the boat honest on the sightings map if that screen is open: a
+    // captain comparing "here" to yesterday's pins needs "here" to move.
+    if (captainSightingsState.map && document.getElementById('screenCaptainSightings').classList.contains('active')) {
+      renderCaptainSightingsBoat();
+    }
     flFence.feed(newLat, newLng);
     document.getElementById('statGPS').textContent = fmtLatLng(newLat, newLng);
     document.getElementById('statDistance').textContent = trip.distanceNM.toFixed(2) + ' NM';
@@ -5430,26 +5466,92 @@
   // Subset of the public widget's SPECIES_META — only what we need for
   // pin color / icon. Kept short on purpose; falls through to default for
   // any species the widget supports but we haven't styled here.
+  // The public widget's palette, copied verbatim (sightings-widget.html
+  // SPECIES_META) so a pin means the same thing on both surfaces: guests and
+  // captains learn one set of colours. Orcas are the split black and white
+  // dot the widget draws, drawn here by the same createOrcaIcon.
   const ADMIN_SIGHTINGS_SPECIES_META = {
-    'Orca':                          { icon: '🐋', color: '#000000', borderColor: '#000000' },
-    'Transient Orcas':               { icon: '🐋', color: '#000000', borderColor: '#000000' },
-    'Offshore Orcas':                { icon: '🐋', color: '#000000', borderColor: '#000000' },
-    'Resident Orcas':                { icon: '🐋', color: '#000000', borderColor: '#000000' },
+    'Orca':                          { icon: '🐋', color: '#ffffff', borderColor: '#000000', isSplit: true },
+    'Transient Orcas':               { icon: '🐋', color: '#ffffff', borderColor: '#000000', isSplit: true },
+    'Offshore Orcas':                { icon: '🐋', color: '#ffffff', borderColor: '#000000', isSplit: true },
+    'Resident Orcas':                { icon: '🐋', color: '#ffffff', borderColor: '#000000', isSplit: true },
     'Humpback Whale':                { icon: '🐳', color: '#111111', borderColor: '#555' },
     'Blue Whale':                    { icon: '🐋', color: '#2b6cb0', borderColor: '#1a4a8a' },
-    'Fin Whale':                     { icon: '🐋', color: '#744210', borderColor: '#4a2800' },
+    'Fin Whale':                     { icon: '🐋', color: '#ea580c', borderColor: '#9a3412' },
     'Gray Whale':                    { icon: '🐋', color: '#718096', borderColor: '#4a5568' },
     'Minke Whale':                   { icon: '🐋', color: '#2c7a7b', borderColor: '#1a5a5b' },
-    'Sperm Whale':                   { icon: '🐋', color: '#4a1942', borderColor: '#2d0f29' },
-    'Pacific White-sided Dolphin':   { icon: '🐬', color: '#f0f0f0', borderColor: '#aaa' },
-    'Common Dolphin':                { icon: '🐬', color: '#f0f0f0', borderColor: '#aaa' },
-    "Risso's Dolphin":               { icon: '🐬', color: '#f0f0f0', borderColor: '#aaa' },
-    'Bottlenose Dolphin':            { icon: '🐬', color: '#f0f0f0', borderColor: '#aaa' },
+    'Sperm Whale':                   { icon: '🐋', color: '#9333ea', borderColor: '#581c87' },
+    'Pacific White-sided Dolphin':   { icon: '🐬', color: '#ec4899', borderColor: '#be185d' },
+    'Common Dolphin':                { icon: '🐬', color: '#fbbf24', borderColor: '#a16207' },
+    "Risso's Dolphin":               { icon: '🐬', color: '#94a3b8', borderColor: '#475569' },
+    'Bottlenose Dolphin':            { icon: '🐬', color: '#06b6d4', borderColor: '#0e7490' },
+    'Coastal Bottlenose Dolphin':    { icon: '🐬', color: '#38bdf8', borderColor: '#0284c7' },
+    'Northern Right Whale Dolphin':  { icon: '🐬', color: '#d946ef', borderColor: '#a21caf' },
+    "Dall's Porpoise":               { icon: '🐬', color: '#6366f1', borderColor: '#4338ca' },
+    'Harbor Porpoise':               { icon: '🐬', color: '#818cf8', borderColor: '#4f46e5' },
     'Sea Otter':                     { icon: '🦦', color: '#c05621', borderColor: '#7b341e' },
+    'Harbor Seal':                   { icon: '🦭', color: '#b7791f', borderColor: '#7b5a00' },
     'Mola Mola':                     { icon: '🐟', color: '#6b46c1', borderColor: '#44337a' },
     'White Shark':                   { icon: '🦈', color: '#4a5568', borderColor: '#2d3748' },
+    'Blue Shark':                    { icon: '🦈', color: '#2b4c7e', borderColor: '#1a3a6e' },
+    'Salmon Shark':                  { icon: '🦈', color: '#2d3748', borderColor: '#1a202c' },
+    'Black-footed Albatross':        { icon: '🐦', color: '#d4a017', borderColor: '#a07800' },
     'default':                       { icon: '🌊', color: '#4a5568', borderColor: '#2d3748' },
   };
+
+  /*
+    Resolve a species name to its pin style by family, not by exact key.
+
+    Two failures met on 2026-08-18. Slater logged "Transient Orcas" and
+    "Risso's dolphins" and could not find the orca on the captain map: orcas
+    were #000000 next to humpbacks at #111111, the same dot to a human eye,
+    and the dolphin spelling missed the map entirely and fell to grey. This
+    screen has no legend, and with species now off the trip cards the pin
+    colour is the ONLY place species shows, so it has to carry.
+
+    Orcas get a strong, unique colour. Family matching means "Transient
+    Orcas", "orca", "Killer whale" and "Risso's dolphins" all land where they
+    should regardless of casing, plural, or apostrophe. Exact keys still win
+    when present.
+  */
+  function speciesMeta(name) {
+    const M = ADMIN_SIGHTINGS_SPECIES_META;
+    if (name && M[name]) return M[name];
+    const n = String(name || '').toLowerCase();
+    if (!n) return M['default'];
+    if (n.includes('orca') || n.includes('killer whale')) return M['Orca'];
+    if (n.includes('humpback')) return M['Humpback Whale'];
+    if (n.includes('blue whale')) return M['Blue Whale'];
+    if (n.includes('fin whale')) return M['Fin Whale'];
+    if (n.includes('gray whale') || n.includes('grey whale')) return M['Gray Whale'];
+    if (n.includes('minke')) return M['Minke Whale'];
+    if (n.includes('sperm')) return M['Sperm Whale'];
+    if (n.includes('risso')) return M["Risso's Dolphin"];
+    if (n.includes('white-sided') || n.includes('white sided')) return M['Pacific White-sided Dolphin'];
+    if (n.includes('bottlenose')) return M['Bottlenose Dolphin'];
+    if (n.includes('right whale dolphin')) return M['Northern Right Whale Dolphin'];
+    if (n.includes('dall')) return M["Dall's Porpoise"];
+    if (n.includes('harbor porpoise') || n.includes('harbour porpoise')) return M['Harbor Porpoise'];
+    if (n.includes('dolphin')) return M['Common Dolphin'];
+    if (n.includes('otter')) return M['Sea Otter'];
+    if (n.includes('seal') || n.includes('sea lion')) return M['Harbor Seal'];
+    if (n.includes('mola') || n.includes('sunfish')) return M['Mola Mola'];
+    if (n.includes('blue shark')) return M['Blue Shark'];
+    if (n.includes('salmon shark')) return M['Salmon Shark'];
+    if (n.includes('shark')) return M['White Shark'];
+    if (n.includes('albatross')) return M['Black-footed Albatross'];
+    return M['default'];
+  }
+
+  // Same split black and white orca dot the widget draws.
+  function createOrcaIcon() {
+    const size = 16;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 1}" fill="white" stroke="#000" stroke-width="1.5"/>
+      <path d="M${size/2},1 A${size/2-1},${size/2-1} 0 0,1 ${size/2},${size-1} Z" fill="black"/>
+    </svg>`;
+    return L.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2], popupAnchor: [0, -size/2] });
+  }
 
   const adminSightingsState = {
     rows: [],          // raw rows from /api/admin/sightings
@@ -5634,15 +5736,17 @@
     const latlngs = [];
     rows.forEach(r => {
       if (r.lat == null || r.lng == null) return;
-      const meta = ADMIN_SIGHTINGS_SPECIES_META[r.species] || ADMIN_SIGHTINGS_SPECIES_META['default'];
-      const marker = L.circleMarker([+r.lat, +r.lng], {
-        radius: 7,
-        fillColor: meta.color,
-        color: meta.borderColor || '#000',
-        weight: 1.5,
-        fillOpacity: 0.9,
-        opacity: 1,
-      });
+      const meta = speciesMeta(r.species);
+      const marker = meta.isSplit
+        ? L.marker([+r.lat, +r.lng], { icon: createOrcaIcon() })
+        : L.circleMarker([+r.lat, +r.lng], {
+            radius: 7,
+            fillColor: meta.color,
+            color: meta.borderColor || '#000',
+            weight: 1.5,
+            fillOpacity: 0.9,
+            opacity: 1,
+          });
       const depth = (r.depth_meters != null) ? `${Math.round(r.depth_meters)}m` : '';
       const popupCoords = fmtLatLng(r.lat, r.lng);
       marker.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
@@ -5712,7 +5816,7 @@
     const showAll = adminSightingsState.showAll || rows.length <= cap;
     const shown = showAll ? rows : rows.slice(0, cap);
     const rowsHtml = shown.map(r => {
-      const meta = ADMIN_SIGHTINGS_SPECIES_META[r.species] || ADMIN_SIGHTINGS_SPECIES_META['default'];
+      const meta = speciesMeta(r.species);
       const depth = (r.depth_meters != null) ? ` · ${Math.round(r.depth_meters)}m` : '';
       const mapHref = (r.lat != null && r.lng != null)
         ? `https://www.google.com/maps?q=${r.lat},${r.lng}`
@@ -5765,6 +5869,8 @@
       const n = Number(r.count) || 0;
       trip.species.set(r.species, (trip.species.get(r.species) || 0) + n);
       trip.animals += n;
+      trip.sightingCount = (trip.sightingCount || 0) + 1;
+      (trip.times = trip.times || []).push(r.sighting_time ? String(r.sighting_time).slice(0, 5) : null);
     });
     const dateLabel = (key) => {
       // key is YYYY-MM-DD; render as "Wednesday, May 6, 2026"
@@ -5778,7 +5884,7 @@
       const tally = Array.from(trip.species.entries())
         .sort((a, b) => b[1] - a[1]) // most-spotted species first
         .map(([species, count]) => {
-          const meta = ADMIN_SIGHTINGS_SPECIES_META[species] || ADMIN_SIGHTINGS_SPECIES_META['default'];
+          const meta = speciesMeta(species);
           // Clicking a species row focuses the map on just that species's
           // pins for this trip — usually 1-3 pins, sometimes more.
           return `<div class="grouped-species-row" style="cursor:pointer;" onclick="event.stopPropagation(); focusAdminTripSpecies('${jsAttrStr(tripKey)}', '${jsAttrStr(species)}')">
@@ -5807,9 +5913,10 @@
 
   const captainSightingsState = {
     rows: [],
-    // Same calm defaults as the admin screen: recent + grouped.
-    rangeDays: '30',
+    // Yesterday, grouped, boat drawn. See the range chips for why so short.
+    rangeDays: 'yesterday',
     viewMode: 'grouped',
+    boatMarker: null,
     showAll: false,
     focusedTripKey: null,
     map: null,
@@ -5884,9 +5991,23 @@
   function filteredCaptainSightings() {
     const range = captainSightingsState.rangeDays;
     let rows = captainSightingsState.rows;
-    if (range !== 'all') {
-      const cutoff = new Date(Date.now() - parseInt(range, 10) * 86400000);
-      const cutoffKey = cutoff.toISOString().slice(0, 10);
+    // Local calendar dates, not UTC: a captain at 7am Pacific is planning
+    // against yesterday's trips, and a UTC cutoff would already call part of
+    // yesterday "two days ago" by evening.
+    const localKey = (d) => {
+      const p = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    };
+    if (range === 'yesterday') {
+      // Exactly the previous calendar day. Not "today", which at the hour a
+      // captain plans a morning departure is an empty map (Slater,
+      // 2026-08-18): what they want is what the boats found yesterday.
+      const y = new Date(); y.setDate(y.getDate() - 1);
+      const key = localKey(y);
+      rows = rows.filter(r => (r.trip_date || '') === key);
+    } else if (range !== 'all') {
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - parseInt(range, 10));
+      const cutoffKey = localKey(cutoff);
       rows = rows.filter(r => (r.trip_date || '') >= cutoffKey);
     }
     return rows;
@@ -5903,11 +6024,28 @@
       ? rows.filter(r => (r.trip_id || r.trip_date) === focused)
       : rows;
     renderCaptainSightingsMarkers(mapRows);
-    if (captainSightingsState.viewMode === 'grouped') {
-      renderCaptainSightingsGrouped(rows);
-    } else {
-      renderCaptainSightingsTable(rows);
-    }
+    renderCaptainSightingsGrouped(rows);
+    renderCaptainSightingsBoat();
+  }
+
+  /*
+    The boat, on the sightings map. The whole reason a captain opens this
+    screen mid-trip is "am I anywhere near where they were?", which is
+    unanswerable without knowing where "I" is. Uses the last fix the running
+    trip recorded; with no trip running there is no boat to draw. Redrawn on
+    every render so it follows the boat while the screen is open.
+  */
+  function renderCaptainSightingsBoat() {
+    const map = captainSightingsState.map;
+    if (!map) return;
+    if (captainSightingsState.boatMarker) { map.removeLayer(captainSightingsState.boatMarker); captainSightingsState.boatMarker = null; }
+    if (!trip.startTime || trip.endTime || trip.lastLat == null || trip.lastLng == null) return;
+    const icon = L.divIcon({
+      className: '',
+      iconSize: [22, 22], iconAnchor: [11, 11],
+      html: `<div style="width:22px;height:22px;border-radius:50%;background:var(--teal);border:3px solid #fff;box-shadow:0 0 0 6px rgba(111,177,172,.28),0 2px 8px rgba(0,0,0,.5);"></div>`,
+    });
+    captainSightingsState.boatMarker = L.marker([trip.lastLat, trip.lastLng], { icon, interactive: false, zIndexOffset: 1000 }).addTo(map);
   }
 
   function clearCaptainSightingsFocus() {
@@ -5920,19 +6058,30 @@
     if (captainSightingsState.clusterLayer) { map.removeLayer(captainSightingsState.clusterLayer); captainSightingsState.clusterLayer = null; }
     captainSightingsState.markers.forEach(m => map.removeLayer(m));
     captainSightingsState.markers = [];
-    const cluster = makeSightingsClusterLayer();
+    /*
+      No clustering on the captain map. Clustering earns its keep against
+      hundreds of pins over months; with Yesterday and 3 days as the ranges
+      here there are a dozen or two, and a captain wants to see every one
+      where it actually was, not a bubble reading "6" that hides them
+      (Slater, 2026-08-18). The admin map keeps its clusters: it spans the
+      whole season. Only the 30 day view could get busy, and busy raw pins
+      still beat pins hidden.
+    */
+    const cluster = null;
     const latlngs = [];
     rows.forEach(r => {
       if (r.lat == null || r.lng == null) return;
-      const meta = ADMIN_SIGHTINGS_SPECIES_META[r.species] || ADMIN_SIGHTINGS_SPECIES_META['default'];
-      const marker = L.circleMarker([+r.lat, +r.lng], {
-        radius: 7,
-        fillColor: meta.color,
-        color: meta.borderColor || '#000',
-        weight: 1.5,
-        fillOpacity: 0.9,
-        opacity: 1,
-      });
+      const meta = speciesMeta(r.species);
+      const marker = meta.isSplit
+        ? L.marker([+r.lat, +r.lng], { icon: createOrcaIcon() })
+        : L.circleMarker([+r.lat, +r.lng], {
+            radius: 7,
+            fillColor: meta.color,
+            color: meta.borderColor || '#000',
+            weight: 1.5,
+            fillOpacity: 0.9,
+            opacity: 1,
+          });
       const depth = (r.depth_meters != null) ? `${Math.round(r.depth_meters)}m` : '';
       marker.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
         <strong style="font-size:13px;">${meta.icon} ${escapeHtml(r.species || 'Unknown')}</strong><br>
@@ -5989,7 +6138,7 @@
     const showAll = captainSightingsState.showAll || rows.length <= cap;
     const shown = showAll ? rows : rows.slice(0, cap);
     const rowsHtml = shown.map(r => {
-      const meta = ADMIN_SIGHTINGS_SPECIES_META[r.species] || ADMIN_SIGHTINGS_SPECIES_META['default'];
+      const meta = speciesMeta(r.species);
       const depth = (r.depth_meters != null) ? ` · ${Math.round(r.depth_meters)}m` : '';
       const mapHref = (r.lat != null && r.lng != null)
         ? `https://www.google.com/maps?q=${r.lat},${r.lng}`
@@ -6030,6 +6179,8 @@
       const n = Number(r.count) || 0;
       trip.species.set(r.species, (trip.species.get(r.species) || 0) + n);
       trip.animals += n;
+      trip.sightingCount = (trip.sightingCount || 0) + 1;
+      (trip.times = trip.times || []).push(r.sighting_time ? String(r.sighting_time).slice(0, 5) : null);
     });
     const dateLabel = (key) => {
       try {
@@ -6038,25 +6189,33 @@
         });
       } catch { return key || ''; }
     };
-    tbl.innerHTML = Array.from(trips.entries()).map(([tripKey, trip]) => {
-      const tally = Array.from(trip.species.entries())
-        .sort((a, b) => b[1] - a[1])
-        .map(([species, count]) => {
-          const meta = ADMIN_SIGHTINGS_SPECIES_META[species] || ADMIN_SIGHTINGS_SPECIES_META['default'];
-          return `<div class="grouped-species-row" style="cursor:pointer;" onclick="event.stopPropagation(); focusCaptainTripSpecies('${jsAttrStr(tripKey)}', '${jsAttrStr(species)}')">
-            <span class="species-dot" style="background:${meta.color};border:1px solid ${meta.borderColor || '#000'};"></span>
-            <span class="grouped-species-name">${escapeHtml(species || 'Unknown')}</span>
-            <span class="grouped-species-count">×${count}</span>
-          </div>`;
-        }).join('');
+    /*
+      Dates and times, nothing else. The species tally moved off this card
+      on purpose: a captain at the helm wants "when were we finding them",
+      and the map already colours the pins by species. What was seen, in
+      detail, is the public widget's job (Slater, 2026-08-18).
+
+      Times are the sighting times of that trip, first to last, so a card
+      reads "Monday · 9:27 AM to 10:59 AM": the window the animals were up.
+    */
+    const cards = Array.from(trips.entries()).map(([tripKey, trip]) => {
+      const times = (trip.times || []).filter(Boolean).sort();
+      const fmtT = (t) => { const [h, m] = String(t).split(':'); const hh = parseInt(h, 10); return `${((hh + 11) % 12) + 1}:${m} ${hh < 12 ? 'AM' : 'PM'}`; };
+      const window = times.length === 0 ? ''
+        : times.length === 1 ? fmtT(times[0])
+        : `${fmtT(times[0])} to ${fmtT(times[times.length - 1])}`;
+      const n = trip.sightingCount || 0;
       return `<div class="grouped-trip-card" style="cursor:pointer;" onclick="focusCaptainTripSpecies('${jsAttrStr(tripKey)}', null)">
         <div class="grouped-trip-header">
           <div class="grouped-trip-title">${escapeHtml(dateLabel(trip.trip_date))}${trip.trip_part ? ' · ' + escapeHtml(trip.trip_part) : ''}</div>
-          <div class="grouped-trip-summary">${trip.species.size} SPECIES · ${trip.animals} ANIMALS</div>
+          <div class="grouped-trip-summary">${window ? escapeHtml(window) + ' · ' : ''}${n} SIGHTING${n === 1 ? '' : 'S'}</div>
         </div>
-        <div class="grouped-species-list">${tally}</div>
       </div>`;
-    }).join('');
+    });
+    // Three cards to a page; the pager snaps page by page (see .cap-log-pager).
+    const pages = [];
+    for (let i = 0; i < cards.length; i += 3) pages.push(`<div class="cap-log-page">${cards.slice(i, i + 3).join('')}</div>`);
+    tbl.innerHTML = pages.join('');
   }
 
   // Suggest a slug from the operator name as the user types. Standard
