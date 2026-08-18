@@ -1025,6 +1025,31 @@
     }
     :where(#screenAdminSightings, #screenCaptainSightings) .grouped-species-row:first-child { border-top: none; }
     :where(#screenAdminSightings, #screenCaptainSightings) .grouped-trip-card:hover { background: rgba(255,255,255,0.03); }
+    /* Captain log pager. Each .cap-log-page holds three cards and is exactly
+       the viewport tall, so scroll-snap lands page to page: the three cards
+       travel together. mandatory + contain so a flick never strands the
+       list between pages or scrolls the screen behind it. */
+    .cap-log-pager {
+      height: 264px;
+      overflow-y: auto;
+      scroll-snap-type: y mandatory;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .cap-log-pager::-webkit-scrollbar { display: none; }
+    .cap-log-page {
+      height: 264px;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
+      display: grid;
+      grid-template-rows: repeat(3, 1fr);
+      gap: 10px;
+      padding-bottom: 10px;
+      box-sizing: border-box;
+    }
+    .cap-log-page .grouped-trip-card { margin-bottom: 0; min-height: 0; display: flex; align-items: center; }
+    .cap-log-page .grouped-trip-header { width: 100%; }
     :where(#screenAdminSightings, #screenCaptainSightings) .grouped-species-row:hover { background: rgba(255,255,255,0.04); border-radius: 4px; }
     :where(#screenAdminSightings, #screenCaptainSightings) .grouped-species-name {
       flex: 1;
@@ -1902,8 +1927,8 @@
           <!-- Recent only. This screen is for a captain deciding where to
                point the bow, and whales move; a week ago is history and
                history lives on the public widget (Slater, 2026-08-18). -->
-          <button type="button" class="chip" data-cap-range="yesterday" onclick="setCaptainSightingsRange('yesterday')">Yesterday</button>
-          <button type="button" class="chip active" data-cap-range="3" onclick="setCaptainSightingsRange(3)">3 days</button>
+          <button type="button" class="chip active" data-cap-range="yesterday" onclick="setCaptainSightingsRange('yesterday')">Yesterday</button>
+          <button type="button" class="chip" data-cap-range="3" onclick="setCaptainSightingsRange(3)">3 days</button>
           <button type="button" class="chip" data-cap-range="30" onclick="setCaptainSightingsRange(30)">30 days</button>
         </div>
       </div>
@@ -1914,7 +1939,11 @@
       <!-- Scrolls in place at roughly three cards tall so the map above never
            leaves the screen: the whole point is comparing the list to the
            pins, and a long list used to push the map out of view. -->
-      <div id="captainSightingsTable" style="max-height:252px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-right:2px;"><div class="empty">Loading…</div></div>
+      <!-- Paged, not free scrolling: cards are grouped three to a page and
+           the list snaps a whole page at a time, so a swipe reads as
+           Mon-Wed, then Thu-Sat, three cards moving as one strip under the
+           finger (Slater, 2026-08-18). -->
+      <div id="captainSightingsTable" class="cap-log-pager"><div class="empty">Loading…</div></div>
       <button class="btn btn-outline" type="button" onclick="goHome()" style="margin-top:14px;">Back</button>
     </div>
   </div>
@@ -5816,8 +5845,8 @@
 
   const captainSightingsState = {
     rows: [],
-    // Three days, grouped, boat drawn. See the range chips for why so short.
-    rangeDays: '3',
+    // Yesterday, grouped, boat drawn. See the range chips for why so short.
+    rangeDays: 'yesterday',
     viewMode: 'grouped',
     boatMarker: null,
     showAll: false,
@@ -6090,7 +6119,7 @@
       Times are the sighting times of that trip, first to last, so a card
       reads "Monday · 9:27 AM to 10:59 AM": the window the animals were up.
     */
-    tbl.innerHTML = Array.from(trips.entries()).map(([tripKey, trip]) => {
+    const cards = Array.from(trips.entries()).map(([tripKey, trip]) => {
       const times = (trip.times || []).filter(Boolean).sort();
       const fmtT = (t) => { const [h, m] = String(t).split(':'); const hh = parseInt(h, 10); return `${((hh + 11) % 12) + 1}:${m} ${hh < 12 ? 'AM' : 'PM'}`; };
       const window = times.length === 0 ? ''
@@ -6103,7 +6132,11 @@
           <div class="grouped-trip-summary">${window ? escapeHtml(window) + ' · ' : ''}${n} SIGHTING${n === 1 ? '' : 'S'}</div>
         </div>
       </div>`;
-    }).join('');
+    });
+    // Three cards to a page; the pager snaps page by page (see .cap-log-pager).
+    const pages = [];
+    for (let i = 0; i < cards.length; i += 3) pages.push(`<div class="cap-log-page">${cards.slice(i, i + 3).join('')}</div>`);
+    tbl.innerHTML = pages.join('');
   }
 
   // Suggest a slug from the operator name as the user types. Standard
