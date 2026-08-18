@@ -5487,6 +5487,41 @@
     'default':                       { icon: '🌊', color: '#4a5568', borderColor: '#2d3748' },
   };
 
+  /*
+    Resolve a species name to its pin style by family, not by exact key.
+
+    Two failures met on 2026-08-18. Slater logged "Transient Orcas" and
+    "Risso's dolphins" and could not find the orca on the captain map: orcas
+    were #000000 next to humpbacks at #111111, the same dot to a human eye,
+    and the dolphin spelling missed the map entirely and fell to grey. This
+    screen has no legend, and with species now off the trip cards the pin
+    colour is the ONLY place species shows, so it has to carry.
+
+    Orcas get a strong, unique colour. Family matching means "Transient
+    Orcas", "orca", "Killer whale" and "Risso's dolphins" all land where they
+    should regardless of casing, plural, or apostrophe. Exact keys still win
+    when present.
+  */
+  const ORCA_META = { icon: '🐋', color: '#e63946', borderColor: '#ffffff' };
+  function speciesMeta(name) {
+    const M = ADMIN_SIGHTINGS_SPECIES_META;
+    if (name && M[name]) return name.toLowerCase().includes('orca') ? ORCA_META : M[name];
+    const n = String(name || '').toLowerCase();
+    if (!n) return M['default'];
+    if (n.includes('orca') || n.includes('killer whale')) return ORCA_META;
+    if (n.includes('humpback')) return M['Humpback Whale'];
+    if (n.includes('blue whale')) return M['Blue Whale'];
+    if (n.includes('fin whale')) return M['Fin Whale'];
+    if (n.includes('gray whale') || n.includes('grey whale')) return M['Gray Whale'];
+    if (n.includes('minke')) return M['Minke Whale'];
+    if (n.includes('sperm')) return M['Sperm Whale'];
+    if (n.includes('dolphin') || n.includes('porpoise')) return M['Common Dolphin'];
+    if (n.includes('otter')) return M['Sea Otter'];
+    if (n.includes('mola') || n.includes('sunfish')) return M['Mola Mola'];
+    if (n.includes('shark')) return M['White Shark'];
+    return M['default'];
+  }
+
   const adminSightingsState = {
     rows: [],          // raw rows from /api/admin/sightings
     // Defaults tuned for a calm first paint: recent window + grouped-by-trip
@@ -5670,7 +5705,7 @@
     const latlngs = [];
     rows.forEach(r => {
       if (r.lat == null || r.lng == null) return;
-      const meta = ADMIN_SIGHTINGS_SPECIES_META[r.species] || ADMIN_SIGHTINGS_SPECIES_META['default'];
+      const meta = speciesMeta(r.species);
       const marker = L.circleMarker([+r.lat, +r.lng], {
         radius: 7,
         fillColor: meta.color,
@@ -5748,7 +5783,7 @@
     const showAll = adminSightingsState.showAll || rows.length <= cap;
     const shown = showAll ? rows : rows.slice(0, cap);
     const rowsHtml = shown.map(r => {
-      const meta = ADMIN_SIGHTINGS_SPECIES_META[r.species] || ADMIN_SIGHTINGS_SPECIES_META['default'];
+      const meta = speciesMeta(r.species);
       const depth = (r.depth_meters != null) ? ` · ${Math.round(r.depth_meters)}m` : '';
       const mapHref = (r.lat != null && r.lng != null)
         ? `https://www.google.com/maps?q=${r.lat},${r.lng}`
@@ -5816,7 +5851,7 @@
       const tally = Array.from(trip.species.entries())
         .sort((a, b) => b[1] - a[1]) // most-spotted species first
         .map(([species, count]) => {
-          const meta = ADMIN_SIGHTINGS_SPECIES_META[species] || ADMIN_SIGHTINGS_SPECIES_META['default'];
+          const meta = speciesMeta(species);
           // Clicking a species row focuses the map on just that species's
           // pins for this trip — usually 1-3 pins, sometimes more.
           return `<div class="grouped-species-row" style="cursor:pointer;" onclick="event.stopPropagation(); focusAdminTripSpecies('${jsAttrStr(tripKey)}', '${jsAttrStr(species)}')">
@@ -5994,7 +6029,7 @@
     const latlngs = [];
     rows.forEach(r => {
       if (r.lat == null || r.lng == null) return;
-      const meta = ADMIN_SIGHTINGS_SPECIES_META[r.species] || ADMIN_SIGHTINGS_SPECIES_META['default'];
+      const meta = speciesMeta(r.species);
       const marker = L.circleMarker([+r.lat, +r.lng], {
         radius: 7,
         fillColor: meta.color,
@@ -6059,7 +6094,7 @@
     const showAll = captainSightingsState.showAll || rows.length <= cap;
     const shown = showAll ? rows : rows.slice(0, cap);
     const rowsHtml = shown.map(r => {
-      const meta = ADMIN_SIGHTINGS_SPECIES_META[r.species] || ADMIN_SIGHTINGS_SPECIES_META['default'];
+      const meta = speciesMeta(r.species);
       const depth = (r.depth_meters != null) ? ` · ${Math.round(r.depth_meters)}m` : '';
       const mapHref = (r.lat != null && r.lng != null)
         ? `https://www.google.com/maps?q=${r.lat},${r.lng}`
