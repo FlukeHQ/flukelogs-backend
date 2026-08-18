@@ -5466,24 +5466,36 @@
   // Subset of the public widget's SPECIES_META — only what we need for
   // pin color / icon. Kept short on purpose; falls through to default for
   // any species the widget supports but we haven't styled here.
+  // The public widget's palette, copied verbatim (sightings-widget.html
+  // SPECIES_META) so a pin means the same thing on both surfaces: guests and
+  // captains learn one set of colours. Orcas are the split black and white
+  // dot the widget draws, drawn here by the same createOrcaIcon.
   const ADMIN_SIGHTINGS_SPECIES_META = {
-    'Orca':                          { icon: '🐋', color: '#000000', borderColor: '#000000' },
-    'Transient Orcas':               { icon: '🐋', color: '#000000', borderColor: '#000000' },
-    'Offshore Orcas':                { icon: '🐋', color: '#000000', borderColor: '#000000' },
-    'Resident Orcas':                { icon: '🐋', color: '#000000', borderColor: '#000000' },
+    'Orca':                          { icon: '🐋', color: '#ffffff', borderColor: '#000000', isSplit: true },
+    'Transient Orcas':               { icon: '🐋', color: '#ffffff', borderColor: '#000000', isSplit: true },
+    'Offshore Orcas':                { icon: '🐋', color: '#ffffff', borderColor: '#000000', isSplit: true },
+    'Resident Orcas':                { icon: '🐋', color: '#ffffff', borderColor: '#000000', isSplit: true },
     'Humpback Whale':                { icon: '🐳', color: '#111111', borderColor: '#555' },
     'Blue Whale':                    { icon: '🐋', color: '#2b6cb0', borderColor: '#1a4a8a' },
-    'Fin Whale':                     { icon: '🐋', color: '#744210', borderColor: '#4a2800' },
+    'Fin Whale':                     { icon: '🐋', color: '#ea580c', borderColor: '#9a3412' },
     'Gray Whale':                    { icon: '🐋', color: '#718096', borderColor: '#4a5568' },
     'Minke Whale':                   { icon: '🐋', color: '#2c7a7b', borderColor: '#1a5a5b' },
-    'Sperm Whale':                   { icon: '🐋', color: '#4a1942', borderColor: '#2d0f29' },
-    'Pacific White-sided Dolphin':   { icon: '🐬', color: '#f0f0f0', borderColor: '#aaa' },
-    'Common Dolphin':                { icon: '🐬', color: '#f0f0f0', borderColor: '#aaa' },
-    "Risso's Dolphin":               { icon: '🐬', color: '#f0f0f0', borderColor: '#aaa' },
-    'Bottlenose Dolphin':            { icon: '🐬', color: '#f0f0f0', borderColor: '#aaa' },
+    'Sperm Whale':                   { icon: '🐋', color: '#9333ea', borderColor: '#581c87' },
+    'Pacific White-sided Dolphin':   { icon: '🐬', color: '#ec4899', borderColor: '#be185d' },
+    'Common Dolphin':                { icon: '🐬', color: '#fbbf24', borderColor: '#a16207' },
+    "Risso's Dolphin":               { icon: '🐬', color: '#94a3b8', borderColor: '#475569' },
+    'Bottlenose Dolphin':            { icon: '🐬', color: '#06b6d4', borderColor: '#0e7490' },
+    'Coastal Bottlenose Dolphin':    { icon: '🐬', color: '#38bdf8', borderColor: '#0284c7' },
+    'Northern Right Whale Dolphin':  { icon: '🐬', color: '#d946ef', borderColor: '#a21caf' },
+    "Dall's Porpoise":               { icon: '🐬', color: '#6366f1', borderColor: '#4338ca' },
+    'Harbor Porpoise':               { icon: '🐬', color: '#818cf8', borderColor: '#4f46e5' },
     'Sea Otter':                     { icon: '🦦', color: '#c05621', borderColor: '#7b341e' },
+    'Harbor Seal':                   { icon: '🦭', color: '#b7791f', borderColor: '#7b5a00' },
     'Mola Mola':                     { icon: '🐟', color: '#6b46c1', borderColor: '#44337a' },
     'White Shark':                   { icon: '🦈', color: '#4a5568', borderColor: '#2d3748' },
+    'Blue Shark':                    { icon: '🦈', color: '#2b4c7e', borderColor: '#1a3a6e' },
+    'Salmon Shark':                  { icon: '🦈', color: '#2d3748', borderColor: '#1a202c' },
+    'Black-footed Albatross':        { icon: '🐦', color: '#d4a017', borderColor: '#a07800' },
     'default':                       { icon: '🌊', color: '#4a5568', borderColor: '#2d3748' },
   };
 
@@ -5502,24 +5514,43 @@
     should regardless of casing, plural, or apostrophe. Exact keys still win
     when present.
   */
-  const ORCA_META = { icon: '🐋', color: '#e63946', borderColor: '#ffffff' };
   function speciesMeta(name) {
     const M = ADMIN_SIGHTINGS_SPECIES_META;
-    if (name && M[name]) return name.toLowerCase().includes('orca') ? ORCA_META : M[name];
+    if (name && M[name]) return M[name];
     const n = String(name || '').toLowerCase();
     if (!n) return M['default'];
-    if (n.includes('orca') || n.includes('killer whale')) return ORCA_META;
+    if (n.includes('orca') || n.includes('killer whale')) return M['Orca'];
     if (n.includes('humpback')) return M['Humpback Whale'];
     if (n.includes('blue whale')) return M['Blue Whale'];
     if (n.includes('fin whale')) return M['Fin Whale'];
     if (n.includes('gray whale') || n.includes('grey whale')) return M['Gray Whale'];
     if (n.includes('minke')) return M['Minke Whale'];
     if (n.includes('sperm')) return M['Sperm Whale'];
-    if (n.includes('dolphin') || n.includes('porpoise')) return M['Common Dolphin'];
+    if (n.includes('risso')) return M["Risso's Dolphin"];
+    if (n.includes('white-sided') || n.includes('white sided')) return M['Pacific White-sided Dolphin'];
+    if (n.includes('bottlenose')) return M['Bottlenose Dolphin'];
+    if (n.includes('right whale dolphin')) return M['Northern Right Whale Dolphin'];
+    if (n.includes('dall')) return M["Dall's Porpoise"];
+    if (n.includes('harbor porpoise') || n.includes('harbour porpoise')) return M['Harbor Porpoise'];
+    if (n.includes('dolphin')) return M['Common Dolphin'];
     if (n.includes('otter')) return M['Sea Otter'];
+    if (n.includes('seal') || n.includes('sea lion')) return M['Harbor Seal'];
     if (n.includes('mola') || n.includes('sunfish')) return M['Mola Mola'];
+    if (n.includes('blue shark')) return M['Blue Shark'];
+    if (n.includes('salmon shark')) return M['Salmon Shark'];
     if (n.includes('shark')) return M['White Shark'];
+    if (n.includes('albatross')) return M['Black-footed Albatross'];
     return M['default'];
+  }
+
+  // Same split black and white orca dot the widget draws.
+  function createOrcaIcon() {
+    const size = 16;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 1}" fill="white" stroke="#000" stroke-width="1.5"/>
+      <path d="M${size/2},1 A${size/2-1},${size/2-1} 0 0,1 ${size/2},${size-1} Z" fill="black"/>
+    </svg>`;
+    return L.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2], popupAnchor: [0, -size/2] });
   }
 
   const adminSightingsState = {
@@ -5706,14 +5737,16 @@
     rows.forEach(r => {
       if (r.lat == null || r.lng == null) return;
       const meta = speciesMeta(r.species);
-      const marker = L.circleMarker([+r.lat, +r.lng], {
-        radius: 7,
-        fillColor: meta.color,
-        color: meta.borderColor || '#000',
-        weight: 1.5,
-        fillOpacity: 0.9,
-        opacity: 1,
-      });
+      const marker = meta.isSplit
+        ? L.marker([+r.lat, +r.lng], { icon: createOrcaIcon() })
+        : L.circleMarker([+r.lat, +r.lng], {
+            radius: 7,
+            fillColor: meta.color,
+            color: meta.borderColor || '#000',
+            weight: 1.5,
+            fillOpacity: 0.9,
+            opacity: 1,
+          });
       const depth = (r.depth_meters != null) ? `${Math.round(r.depth_meters)}m` : '';
       const popupCoords = fmtLatLng(r.lat, r.lng);
       marker.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
@@ -6030,14 +6063,16 @@
     rows.forEach(r => {
       if (r.lat == null || r.lng == null) return;
       const meta = speciesMeta(r.species);
-      const marker = L.circleMarker([+r.lat, +r.lng], {
-        radius: 7,
-        fillColor: meta.color,
-        color: meta.borderColor || '#000',
-        weight: 1.5,
-        fillOpacity: 0.9,
-        opacity: 1,
-      });
+      const marker = meta.isSplit
+        ? L.marker([+r.lat, +r.lng], { icon: createOrcaIcon() })
+        : L.circleMarker([+r.lat, +r.lng], {
+            radius: 7,
+            fillColor: meta.color,
+            color: meta.borderColor || '#000',
+            weight: 1.5,
+            fillOpacity: 0.9,
+            opacity: 1,
+          });
       const depth = (r.depth_meters != null) ? `${Math.round(r.depth_meters)}m` : '';
       marker.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
         <strong style="font-size:13px;">${meta.icon} ${escapeHtml(r.species || 'Unknown')}</strong><br>
