@@ -1904,13 +1904,17 @@
                history lives on the public widget (Slater, 2026-08-18). -->
           <button type="button" class="chip" data-cap-range="yesterday" onclick="setCaptainSightingsRange('yesterday')">Yesterday</button>
           <button type="button" class="chip active" data-cap-range="3" onclick="setCaptainSightingsRange(3)">3 days</button>
+          <button type="button" class="chip" data-cap-range="30" onclick="setCaptainSightingsRange(30)">30 days</button>
         </div>
       </div>
       <div id="captainSightingsMap" style="height:360px;border-radius:8px;overflow:hidden;background:#0e1620;margin-bottom:14px;"></div>
       <div class="admin-sightings-listbar" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
         <div id="captainSightingsCount" style="font-size:12px;color:var(--text-dim);"></div>
       </div>
-      <div id="captainSightingsTable"><div class="empty">Loading…</div></div>
+      <!-- Scrolls in place at roughly three cards tall so the map above never
+           leaves the screen: the whole point is comparing the list to the
+           pins, and a long list used to push the map out of view. -->
+      <div id="captainSightingsTable" style="max-height:252px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-right:2px;"><div class="empty">Loading…</div></div>
       <button class="btn btn-outline" type="button" onclick="goHome()" style="margin-top:14px;">Back</button>
     </div>
   </div>
@@ -6067,6 +6071,8 @@
       const n = Number(r.count) || 0;
       trip.species.set(r.species, (trip.species.get(r.species) || 0) + n);
       trip.animals += n;
+      trip.sightingCount = (trip.sightingCount || 0) + 1;
+      (trip.times = trip.times || []).push(r.sighting_time ? String(r.sighting_time).slice(0, 5) : null);
     });
     const dateLabel = (key) => {
       try {
