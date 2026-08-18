@@ -3397,10 +3397,14 @@
     const slot = document.getElementById('endTripSlot');
     if (!slot) return;
     clearTimeout(_endTripArmTimer);
+    // margin-top:0 on the pair: .btn carries a 14px top margin, and the
+    // single button's margin already sits on the slot, so the pair inherits
+    // it once rather than each adding its own. Without this the row is 14px
+    // taller than the button it replaces and the screen below it hops.
     slot.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <button class="btn btn-primary" type="button" onclick="disarmEndTrip()">Keep logging</button>
-        <button class="btn btn-danger" type="button" onclick="disarmEndTrip(); endTrip('button')">End trip</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;">
+        <button class="btn btn-primary" type="button" style="margin-top:0;" onclick="disarmEndTrip()">Keep logging</button>
+        <button class="btn btn-danger" type="button" style="margin-top:0;" onclick="disarmEndTrip(); endTrip('button')">End trip</button>
       </div>`;
     _endTripArmTimer = setTimeout(disarmEndTrip, 8000);
   }
