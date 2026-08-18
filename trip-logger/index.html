@@ -1225,35 +1225,6 @@
       text-transform: uppercase;
       color: var(--text);
       z-index: 1200; /* toasts above the (now z-1100) header */
-
-    /* ── Ask dialog ─────────────────────────────────────────────────
-       The two-button question for decisions that end things. Exists because
-       native confirm() cannot rename its buttons, so ending a trip was mapped
-       to "Cancel" and continuing to "OK", with a sentence explaining the
-       mapping. A button that needs a legend is the wrong button (Slater,
-       2026-08-16, from the dock prompt). Above toasts: a question beats a
-       notice. */
-    .fl-ask-overlay {
-      position: fixed; inset: 0; z-index: 1300;
-      background: rgba(4,6,8,0.62);
-      -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
-      display: flex; align-items: center; justify-content: center;
-      padding: 24px;
-    }
-    .fl-ask-card {
-      width: 100%; max-width: 340px;
-      background:
-        linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.012) 55%, rgba(255,255,255,0) 100%),
-        var(--ink-3);
-      border: 1px solid var(--hair);
-      border-radius: 18px;
-      box-shadow: 0 1px 0 rgba(255,255,255,.07) inset, 0 18px 44px rgba(0,0,0,.5);
-      padding: 20px 18px 16px;
-    }
-    .fl-ask-title { font: 600 17px/1.35 "Open Sans", sans-serif; color: var(--text); }
-    .fl-ask-body { font-size: 13px; color: var(--text-dim); line-height: 1.5; margin-top: 8px; }
-    .fl-ask-buttons { display: grid; gap: 8px; margin-top: 16px; }
-    .fl-ask-buttons .btn { width: 100%; margin: 0; }
       /* Toasts are never interactive — without this, the INVISIBLE hidden
          pill (opacity 0, fixed ~bottom 40-100px) silently ate taps meant
          for buttons underneath it, most notably End Trip on the Log screen
@@ -2142,7 +2113,13 @@
       </div>
     </details>
 
-    <button class="btn btn-outline" onclick="confirmEndTrip()">End Trip</button>
+    <!-- End Trip is a two-step control in place: tapping it swaps the button
+         for a Keep logging / End trip pair right where the thumb already is.
+         No overlay, no explanation, no confirm() (Slater, 2026-08-17: people
+         know what End trip means). -->
+    <div id="endTripSlot">
+      <button class="btn btn-outline" onclick="confirmEndTrip()">End Trip</button>
+    </div>
   </div>
 
   <!-- Guest sign-up code, full screen. Tap anywhere to put it away. -->
@@ -2772,18 +2749,18 @@
           // same question here. Most crew tap; the long press buttons are the
           // shortcut for the ones who know.
           if (trip.startTime && !trip.endTime) {
-            flAsk({
-              title: 'Back at the dock. Still logging whales?',
-              primary: 'Continue logging',
-              secondary: 'End trip',
-            }).then((answer) => {
-              if (answer === 'primary') {
-                this.armed = false;
-                this.prompted = false;
-              } else {
-                endTrip('dock_prompt');
-              }
-            });
+            // Same two-button choice, in place: open the Log screen with the
+            // End Trip control already armed. The toast names why the app
+            // opened; the pair says the rest. Tapping Keep logging stands the
+            // fence down for this trip like before.
+            showScreen('screenLog');
+            toast('Back at the dock. Still logging whales?');
+            confirmEndTrip();
+            const slot = document.getElementById('endTripSlot');
+            const keep = slot && slot.querySelector('.btn-primary');
+            const end = slot && slot.querySelector('.btn-danger');
+            if (keep) keep.onclick = () => { disarmEndTrip(); this.armed = false; this.prompted = false; };
+            if (end) end.onclick = () => { disarmEndTrip(); endTrip('dock_prompt'); };
           }
         }
       });
@@ -3383,55 +3360,6 @@
   }
 
   /*
-    One question, two buttons that say what they do.
-
-    Returns a promise resolving 'primary' or 'secondary'. The primary action
-    is always the safe one (keep going), rendered as the big moon-white
-    button; the secondary is the ending one. Tapping the backdrop counts as
-    the safe answer, because a mis-tap at the dock must never end a trip.
-  */
-  function flAsk(opts) {
-    return new Promise((resolve) => {
-      const overlay = document.createElement('div');
-      overlay.className = 'fl-ask-overlay';
-      overlay.setAttribute('role', 'dialog');
-      overlay.setAttribute('aria-modal', 'true');
-      const card = document.createElement('div');
-      card.className = 'fl-ask-card';
-      const title = document.createElement('div');
-      title.className = 'fl-ask-title';
-      title.textContent = opts.title;
-      card.appendChild(title);
-      if (opts.body) {
-        const body = document.createElement('div');
-        body.className = 'fl-ask-body';
-        body.textContent = opts.body;
-        card.appendChild(body);
-      }
-      const row = document.createElement('div');
-      row.className = 'fl-ask-buttons';
-      const done = (answer) => { overlay.remove(); resolve(answer); };
-      const primary = document.createElement('button');
-      primary.type = 'button';
-      primary.className = 'btn btn-primary';
-      primary.textContent = opts.primary;
-      primary.onclick = () => done('primary');
-      const secondary = document.createElement('button');
-      secondary.type = 'button';
-      secondary.className = 'btn btn-outline';
-      secondary.textContent = opts.secondary;
-      secondary.onclick = () => done('secondary');
-      row.appendChild(primary);
-      row.appendChild(secondary);
-      card.appendChild(row);
-      overlay.appendChild(card);
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) done('primary'); });
-      document.body.appendChild(overlay);
-      primary.focus();
-    });
-  }
-
-  /*
     Always ask, not only when nothing was logged.
 
     The old guard fired only on an empty sighting list, so a trip with real
@@ -3450,18 +3378,40 @@
     screen notification, which is a deliberate choice already made and cannot
     answer a prompt anyway.
   */
+  /*
+    The End Trip button turns into the choice, in place.
+
+    Two designs preceded this. A native confirm() could not rename its
+    buttons, so ending was mapped to Cancel. An in-page dialog fixed the
+    labels but rendered below the page instead of over it (the app's layout
+    neutralises position:fixed inside the screen stack) and carried a
+    paragraph of explanation nobody needed. Slater's read: keep it to Keep
+    logging / End trip, swap the button itself, no info, people know what
+    that means.
+
+    The pair reverts to the single button after 8 seconds untouched or on
+    Keep logging, so a stray tap never leaves the trip one press from ending.
+  */
+  let _endTripArmTimer = null;
   function confirmEndTrip() {
-    const n = trip.sightings.length;
-    flAsk({
-      title: n === 0
-        ? 'End the trip with no sightings logged?'
-        : `End the trip with ${n} sighting${n === 1 ? '' : 's'} logged?`,
-      body: 'Recording and the live map stop. A trip cannot be resumed once it ends.',
-      primary: 'Keep logging',
-      secondary: 'End trip',
-    }).then((answer) => {
-      if (answer === 'secondary') endTrip('button');
-    });
+    const slot = document.getElementById('endTripSlot');
+    if (!slot) return;
+    clearTimeout(_endTripArmTimer);
+    // margin-top:0 on the pair: .btn carries a 14px top margin, and the
+    // single button's margin already sits on the slot, so the pair inherits
+    // it once rather than each adding its own. Without this the row is 14px
+    // taller than the button it replaces and the screen below it hops.
+    slot.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;">
+        <button class="btn btn-primary" type="button" style="margin-top:0;" onclick="disarmEndTrip()">Keep logging</button>
+        <button class="btn btn-danger" type="button" style="margin-top:0;" onclick="disarmEndTrip(); endTrip('button')">End trip</button>
+      </div>`;
+    _endTripArmTimer = setTimeout(disarmEndTrip, 8000);
+  }
+  function disarmEndTrip() {
+    clearTimeout(_endTripArmTimer);
+    const slot = document.getElementById('endTripSlot');
+    if (slot) slot.innerHTML = '<button class="btn btn-outline" onclick="confirmEndTrip()">End Trip</button>';
   }
 
   /*
