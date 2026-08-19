@@ -2902,7 +2902,39 @@
   // Single landing point for every GPS update, regardless of source. Keeps
   // the Haversine distance accounting, the on-screen stats, and the trip
   // breadcrumb push in one place so the native and web paths can't diverge.
+  /*
+    Fix quality gate, in front of everything.
+
+    A rejected fix touches NOTHING: not the track, not the distance, not
+    lastLat, not the live queue. lastLat matters most, because sightings are
+    stamped from it: three times on 2026-08-17/18 a whale was pinned on land
+    or 30 km out by a 300 to 700 metre cell-tower fix that arrived during
+    signal recovery, while the surrounding GPS track was clean to 3 metres.
+    The two rules below would have rejected every one of those fixes.
+
+    50 m: real marine GPS fixes on these phones run 2 to 12 m; cell and wifi
+    fallbacks run 100 m and up. Nothing legitimate lives near the line.
+
+    25 m/s (about 49 knots): faster than any boat here. The implied-speed
+    check only bites on short gaps by construction; after a long signal gap
+    the elapsed time makes any real relocation legal, so re-acquisition far
+    from the last fix is never wrongly dropped.
+  */
   function handleGPSPoint(newLat, newLng, accuracy) {
+    const nowMs = Date.now();
+    if (accuracy != null && Number.isFinite(+accuracy) && +accuracy > 50) {
+      trip.rejectedFixes = (trip.rejectedFixes || 0) + 1;
+      return;
+    }
+    if (trip.lastLat != null && trip.lastFixAt) {
+      const dtSec = Math.max(1, (nowMs - trip.lastFixAt) / 1000);
+      const meters = haversineNM(trip.lastLat, trip.lastLng, newLat, newLng) * 1852;
+      if (meters / dtSec > 25) {
+        trip.rejectedFixes = (trip.rejectedFixes || 0) + 1;
+        return;
+      }
+    }
+    trip.lastFixAt = nowMs;
     if (trip.prevLat !== null && trip.prevLng !== null) {
       const d = haversineNM(trip.prevLat, trip.prevLng, newLat, newLng);
       if (d < 0.5) trip.distanceNM += d;
@@ -3119,6 +3151,30 @@
     const hrs = Math.floor(mins / 60);
     const el = document.getElementById('statDuration');
     if (el) el.textContent = hrs > 0 ? `${hrs}h ${mins % 60}m` : `${mins}m`;
+    updateGPSQuietPill();
+  }
+
+  /*
+    Says so when recording has gone quiet, instead of silence.
+
+    Both real dropouts (2026-08-12 and 08-15, both iOS, both inbound) ran 23
+    to 25 minutes unnoticed and were discovered by the overnight report. A
+    captain told at minute three can fix it with a relaunch; nobody can fix
+    what nothing mentions. Rides the 15 second duration tick, so it costs no
+    timer of its own. The threshold is 3 minutes: normal fixes arrive every
+    few seconds, and even a phone in a pocket under a rain jacket beats that.
+  */
+  function updateGPSQuietPill() {
+    const el = document.getElementById('statGPS');
+    if (!el || !trip.startTime || trip.endTime) return;
+    if (!trip.lastFixAt) return;
+    const quietMin = Math.floor((Date.now() - trip.lastFixAt) / 60000);
+    if (quietMin >= 3) {
+      el.textContent = `GPS quiet ${quietMin} min`;
+      el.style.color = 'var(--warn, #e0a458)';
+    } else if (el.style.color) {
+      el.style.color = '';
+    }
   }
 
   function startDurationTimer() {
