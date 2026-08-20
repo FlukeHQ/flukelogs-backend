@@ -6876,6 +6876,59 @@
                  along Happywhale is, and a bar that kept creeping would be
                  inventing progress to look busy
   */
+  /*
+    How long the matcher takes, learned from this phone's own searches.
+
+    The first version swept forever and told a captain nothing: on wifi the
+    upload finishes instantly, so the whole visible wait was an endless
+    stripe. A sweep says working; it never says how long, and on a boat the
+    difference between five seconds and forty decides whether you keep
+    holding the phone up.
+
+    There is no honest fixed number to hard code. The wait is Happywhale's
+    round trip plus however many candidates were new, and that varies by
+    signal, by boat and by how many of the five whales we already had. So it
+    is measured instead: the last ten searches are kept, and the median of
+    them is the estimate. The median rather than the mean because one search
+    on a dead connection should not move the estimate for the next week.
+
+    Until there are two samples there is no estimate and the count up runs on
+    its own, which is honest for a first ever search.
+  */
+  const WHALE_SEARCH_TIMINGS_KEY = 'whaleSearchTimings';
+  // Never claim to be finished. The bar eases to this and waits for the real
+  // answer, because a bar sitting at 100% with nothing on screen is the exact
+  // thing that reads as broken.
+  const WHALE_SEARCH_CEILING = 92;
+
+  function whaleSearchTimings() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(WHALE_SEARCH_TIMINGS_KEY) || '[]');
+      return Array.isArray(raw) ? raw.filter(n => typeof n === 'number' && n > 0 && n < 120000) : [];
+    } catch (e) { return []; }
+  }
+
+  function rememberWhaleSearchTime(ms) {
+    try {
+      const list = whaleSearchTimings();
+      list.push(Math.round(ms));
+      localStorage.setItem(WHALE_SEARCH_TIMINGS_KEY, JSON.stringify(list.slice(-10)));
+    } catch (e) { /* a forgotten timing just means no estimate next time */ }
+  }
+
+  function whaleSearchEstimateMs() {
+    const list = whaleSearchTimings();
+    if (list.length < 2) return null;
+    const sorted = [...list].sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)];
+  }
+
+  let whaleSearchTicker = null;
+
+  function stopWhaleSearchTicker() {
+    if (whaleSearchTicker) { clearInterval(whaleSearchTicker); whaleSearchTicker = null; }
+  }
+
   function whaleSearchProgress(phase, pct) {
     const wrap = document.getElementById('whaleSearchProgressWrap');
     const bar = document.getElementById('whaleSearchBar');
@@ -6883,22 +6936,67 @@
     if (!wrap || !bar || !status) return;
 
     if (phase === 'done') {
+      stopWhaleSearchTicker();
       wrap.style.display = 'none';
       bar.classList.remove('indeterminate');
       bar.style.width = '0%';
       return;
     }
+
     wrap.style.display = '';
+
     if (phase === 'uploading') {
+      stopWhaleSearchTicker();
       bar.classList.remove('indeterminate');
       bar.style.width = Math.max(2, Math.min(100, Math.round(pct))) + '%';
       status.textContent = 'Sending the photo ' + Math.round(pct) + '%';
       return;
     }
-    bar.classList.add('indeterminate');
-    status.textContent = phase === 'preparing'
-      ? 'Preparing the photo'
-      : 'Comparing against the catalogue';
+
+    if (phase === 'preparing') {
+      stopWhaleSearchTicker();
+      bar.classList.add('indeterminate');
+      status.textContent = 'Preparing the photo';
+      return;
+    }
+
+    /*
+      Matching. With an estimate the bar eases toward the ceiling over the
+      expected time and the label counts down; without one it sweeps and the
+      label counts up. Either way the seconds on screen are real, and once
+      the estimate is passed the bar stops pretending and says so.
+    */
+    stopWhaleSearchTicker();
+    const started = Date.now();
+    const estimate = whaleSearchEstimateMs();
+
+    if (estimate) {
+      bar.classList.remove('indeterminate');
+      bar.style.width = '0%';
+    } else {
+      bar.classList.add('indeterminate');
+    }
+
+    const tick = () => {
+      const elapsed = Date.now() - started;
+      const secs = Math.round(elapsed / 1000);
+      if (!estimate) {
+        status.textContent = 'Comparing against the catalogue, ' + secs + 's';
+        return;
+      }
+      const frac = elapsed / estimate;
+      if (frac < 1) {
+        bar.style.width = Math.max(2, Math.round(frac * WHALE_SEARCH_CEILING)) + '%';
+        const left = Math.max(1, Math.ceil((estimate - elapsed) / 1000));
+        status.textContent = 'Comparing against the catalogue, about ' + left + 's';
+      } else {
+        // Past the estimate: hold, and stop implying it is nearly done.
+        bar.classList.add('indeterminate');
+        status.textContent = 'Taking longer than usual, ' + secs + 's';
+      }
+    };
+    tick();
+    whaleSearchTicker = setInterval(tick, 250);
   }
 
   async function runWhaleSearch(event) {
@@ -6928,6 +7026,7 @@
       const { data: { session } } = await sb.auth.getSession();
       if (!session) return sessionExpired();
 
+      let matchingFrom = null;
       const payload = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/whale-search');
@@ -6941,8 +7040,9 @@
           // the thing that makes a bar feel stuck.
           whaleSearchProgress('uploading', Math.min(99, (e.loaded / e.total) * 100));
         };
-        // Every byte is away; from here the wait belongs to the matcher.
-        xhr.upload.onload = () => whaleSearchProgress('matching');
+        // Every byte is away; from here the wait belongs to the matcher, and
+        // this is the instant the timing starts from.
+        xhr.upload.onload = () => { matchingFrom = Date.now(); whaleSearchProgress('matching'); };
         xhr.onload = () => {
           let body = {};
           try { body = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
@@ -6955,6 +7055,12 @@
         xhr.send(JSON.stringify({ image: b64 }));
       });
 
+      /*
+        Only a search that actually completed teaches the estimate. A failure
+        or a timeout would poison the median with a number that reflects a
+        dead connection rather than the matcher.
+      */
+      if (matchingFrom) rememberWhaleSearchTime(Date.now() - matchingFrom);
       whaleSearchData = payload.candidates || [];
       renderWhaleSearchResults();
       whaleSearchProgress('done');
