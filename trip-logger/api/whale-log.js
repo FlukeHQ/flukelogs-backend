@@ -20,6 +20,7 @@
 // Read only, operator scoped, nothing here can touch a trip or a card.
 
 const { authenticate } = require('../lib/auth');
+const { rowFromRecord } = require('../lib/whale-row');
 
 async function pgGet(path) {
   const url = process.env.SUPABASE_URL;
@@ -33,9 +34,6 @@ async function pgGet(path) {
 
 // "Spike (California)" reads as noise on a mic note; the qualifier is the
 // catalogue's disambiguator, not the name. Same strip the guest card does.
-function cleanName(nickname) {
-  return (nickname || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
-}
 
 
 /*
@@ -133,59 +131,20 @@ module.exports = async function handler(req, res) {
 
       let row = byId.get(id);
       if (!row) {
-        const encs = (m.individual.encs || []).filter(e => e && e.date);
-        const dates = encs.map(e => String(e.date)).sort();
         /*
-          Place names, de-stuttered. The catalogue spells one place five ways
-          ("Moss Landing", "Moss Landing, CA", "Moss Landing, California"),
-          and the first field screenshot read like a skipping record. When one
-          name is a prefix of another, the shorter wins: it is the same place
-          and the cleaner thing to say on a mic.
+          Everything the catalogue says about the animal comes from the shared
+          normaliser, so a whale reads the same here as it does in Whale
+          Search. What is added below is ours alone: the frame WE took, and
+          which of our trips saw it.
         */
-        const rawPlaces = [...new Set(
-          encs.map(e => (e.location || e.region || '').trim()).filter(Boolean)
-        )].sort((a, b) => a.length - b.length);
-        const places = [];
-        for (const cand of rawPlaces) {
-          const norm = cand.toLowerCase();
-          if (!places.some(kept => norm.startsWith(kept.toLowerCase()))) places.push(cand);
-        }
-        // The catalogue's reference photo of this animal, for matching by
-        // eye: the avatar is Happywhale's chosen representative shot, and an
-        // encounter photo stands in when an individual has none.
-        let photoUrl = (ind.avatar && ind.avatar.url) || null;
-        if (!photoUrl) {
-          const withMedia = (m.individual.encs || []).find(e => e && e.media && e.media.url);
-          photoUrl = withMedia ? withMedia.media.url : null;
-        }
-        // Relayed through our own domain: Happywhale's CDN sends no CORS
-        // headers, so a direct URL can't be cached for offline (tainted
-        // canvas) and loads slowly at sea. See api/whale-photo.js.
-        if (photoUrl) photoUrl = '/api/whale-photo?u=' + encodeURIComponent(photoUrl);
-        row = {
-          individualId: id,
-          photoUrl,
-          // The frame of OUR OWN that was identified as this animal, most
-          // recent first. Signed below.
-          ourKey: (typeof m.storage_key === 'string' && m.storage_key) ? m.storage_key : null,
-          ourPhotoUrl: null,
-          name: cleanName(ind.nickname) || ind.primaryId || `Whale ${id}`,
-          nickname: cleanName(ind.nickname) || null,
-          // The raw nickname kept when it carries information the clean one
-          // drops, which is where calf relationships live when they exist at
-          // all ("2023-2024 calf of CRC-19489").
-          fullNickname: (ind.nickname || '').trim() || null,
-          catalogId: ind.primaryId || null,
-          species: ind.species || null,
-          sex: ind.sex || null,
-          encountersOnRecord: encs.length,
-          firstIdentified: dates[0] || null,
-          latestOnRecord: dates[dates.length - 1] || null,
-          places: places.slice(0, 5),
-          fact: m.fun_fact || null,
-          happywhaleUrl: `https://happywhale.com/individual/${id}`,
-          seenByUs: [],
-        };
+        row = rowFromRecord(m.individual);
+        if (!row) continue;
+        // The frame of OUR OWN that was identified as this animal, most
+        // recent first. Signed below.
+        row.ourKey = (typeof m.storage_key === 'string' && m.storage_key) ? m.storage_key : null;
+        row.ourPhotoUrl = null;
+        row.fact = m.fun_fact || null;
+        row.seenByUs = [];
         byId.set(id, row);
       }
       row.seenByUs.push(seenAt);

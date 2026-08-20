@@ -1442,6 +1442,10 @@
         <svg class="glyph" viewBox="0 0 24 24"><path d="M12 20V11M12 11C10 7 6 6 3 7c1 3 4 5.5 9 4M12 11c2-4 6-5 9-4-1 3-4 5.5-9 4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>Whale ID</span>
       </a>
+      <a class="menu-item" id="footerWhaleSearch" href="#" role="menuitem" onclick="event.preventDefault(); closeHeaderMenu(); openWhaleSearch();">
+        <svg class="glyph" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5" stroke-linecap="round"/></svg>
+        <span>Whale Search</span>
+      </a>
       <a class="menu-item" id="footerSettings" href="#" role="menuitem" onclick="event.preventDefault(); closeHeaderMenu(); openSettings();">
         <svg class="glyph" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.5-2.4.9a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.5a7 7 0 0 0-2 1.2l-2.4-.9-2 3.5 2 1.5A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.5 2 3.5 2.4-.9a7 7 0 0 0 2 1.2L10 21h4l.5-2.5a7 7 0 0 0 2-1.2l2.4.9 2-3.5-2-1.5A7 7 0 0 0 19 12Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>Settings</span>
@@ -1822,6 +1826,28 @@
     <div class="section">
       <div id="whaleDetailBody"></div>
       <button class="btn btn-outline" type="button" onclick="backToWhaleLog()">Back to Whale Log</button>
+    </div>
+  </div>
+
+  <!-- Whale Search. The naturalist photographs the back of their camera and
+       asks who this is, while the animal is still alongside. The catalogue
+       pictures are the answer, not the names: a name cannot be checked
+       against the whale in the frame, a photograph can. Tapping the right one
+       opens the same card the Whale ID log opens. -->
+  <div class="screen" id="screenWhaleSearch">
+    <div class="section">
+      <div class="section-label">Whale Search</div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.5;">Photograph the fluke, or the back of your camera showing it. The best frame is the fluke fully up and clear of the water.</p>
+
+      <input type="file" id="whaleSearchInput" accept="image/*" style="display:none;" onchange="runWhaleSearch(event)">
+      <button class="btn btn-primary" type="button" id="whaleSearchBtn" onclick="document.getElementById('whaleSearchInput').click()">Take a photo</button>
+      <div id="whaleSearchPreviewWrap" style="display:none;margin-top:12px;text-align:center;">
+        <img id="whaleSearchPreview" alt="" style="max-width:180px;border-radius:10px;">
+      </div>
+      <p id="whaleSearchStatus" style="font-size:13px;color:var(--text-muted);margin-top:10px;text-align:center;"></p>
+      <div id="whaleSearchResults" style="margin-top:14px;"></div>
+
+      <button class="btn btn-outline" type="button" onclick="goHome()" style="margin-top:16px;">Back</button>
     </div>
   </div>
 
@@ -6786,9 +6812,135 @@
     exactly when a naturalist wants it. Layout borrows the review screen's
     summary cards so it reads like the rest of the app rather than a webpage.
   */
-  function openWhaleDetail(i) {
-    const w = whaleLogData[i];
+  /*
+    Whale Search.
+
+    Score handling is the honest part. Happywhale returns five candidates
+    every time, and across our own 118 identified photos the top one averages
+    0.62 while second through fifth sit in a flat tie around 0.33, spread
+    0.04 apart. That tie is the matcher saying it has nothing, so ranking it
+    like a leaderboard would dress up noise as four runners up.
+
+    So: the strong ones are shown as strong, and the rest are shown under an
+    honest heading. All five stay on screen, because the naturalist who knows
+    these animals beats the matcher regularly and cannot do that with results
+    we hid. Slater identified Spike from a 2012 catalogue frame on a photo
+    three automated passes refused.
+  */
+  let whaleSearchData = [];
+  let whaleDetailReturn = 'screenWhaleLog';
+  const WHALE_SEARCH_STRONG = 0.6;
+  const WHALE_SEARCH_MAXDIM = 1600;
+
+  function openWhaleSearch() {
+    pinBelowHeader();
+    showScreen('screenWhaleSearch');
+  }
+
+  async function runWhaleSearch(event) {
+    const file = event.target.files && event.target.files[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const btn = document.getElementById('whaleSearchBtn');
+    const status = document.getElementById('whaleSearchStatus');
+    const results = document.getElementById('whaleSearchResults');
+    const previewWrap = document.getElementById('whaleSearchPreviewWrap');
+    const preview = document.getElementById('whaleSearchPreview');
+    results.innerHTML = '';
+    whaleSearchData = [];
+    btn.disabled = true;
+    status.textContent = 'Preparing the photo…';
+
+    try {
+      // Downscaled before it leaves the phone. A 12 megapixel original is
+      // minutes of upload on marine signal and the matcher does not use the
+      // extra pixels; 1600 on the long edge is what the send pipeline
+      // submits too.
+      const b64 = await resizeImageToJpeg(file, WHALE_SEARCH_MAXDIM);
+      preview.src = 'data:image/jpeg;base64,' + b64;
+      previewWrap.style.display = '';
+
+      status.textContent = 'Searching the catalogue…';
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) return sessionExpired();
+
+      const res = await fetch('/api/whale-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ image: b64 }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        status.textContent = payload.error || 'Search failed. Try again.';
+        return;
+      }
+
+      whaleSearchData = payload.candidates || [];
+      renderWhaleSearchResults();
+      status.textContent = '';
+    } catch (e) {
+      status.textContent = 'Could not read that photo. Try again.';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Take another photo';
+    }
+  }
+
+  function renderWhaleSearchResults() {
+    const wrap = document.getElementById('whaleSearchResults');
+    if (!whaleSearchData.length) {
+      wrap.innerHTML = '<div class="empty">No match in the catalogue. A fluke fully up and clear of the water matches best.</div>';
+      return;
+    }
+
+    const card = (w, i) => {
+      const pct = w.score == null ? '' : Math.round(w.score * 100) + '%';
+      const photo = w.photoUrl
+        ? '<img src="' + w.photoUrl + '" alt="" loading="lazy" style="width:100%;height:110px;object-fit:cover;display:block;background:#11131a;">'
+        : '<div style="height:110px;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:12px;background:#11131a;">No catalogue photo</div>';
+      return '<button type="button" onclick="openWhaleDetail(' + i + ', whaleSearchData)" ' +
+        'style="all:unset;cursor:pointer;display:block;border:1px solid var(--border,#23252b);border-radius:12px;overflow:hidden;background:var(--card,#15171d);">' +
+        photo +
+        '<div style="padding:8px 10px;">' +
+          '<div style="font-size:13px;font-weight:600;color:var(--text,#e9ecf1);">' + escapeHtml(w.name || 'Unknown') + '</div>' +
+          (w.catalogId && w.catalogId !== w.name
+            ? '<div style="font-size:11px;color:var(--text-muted);">' + escapeHtml(w.catalogId) + '</div>' : '') +
+          (pct ? '<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">' + pct + ' match</div>' : '') +
+        '</div></button>';
+    };
+
+    const grid = items => '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' + items.join('') + '</div>';
+    const strong = [], rest = [];
+    whaleSearchData.forEach((w, i) => ((w.score != null && w.score >= WHALE_SEARCH_STRONG) ? strong : rest).push(card(w, i)));
+
+    let html = '';
+    if (strong.length) {
+      html += '<div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin:0 0 8px;">' +
+        (strong.length === 1 ? 'Likely match' : 'Likely matches') + '</div>' + grid(strong);
+    }
+    if (rest.length) {
+      html += '<div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin:' +
+        (strong.length ? '18px' : '0') + ' 0 6px;">' + (strong.length ? 'Also considered' : 'No confident match') + '</div>' +
+        '<p style="font-size:12px;color:var(--text-dim);margin:0 0 8px;line-height:1.45;">' +
+        (strong.length
+          ? 'Scored well below the one above.'
+          : 'The matcher scored these close together, which usually means it could not tell. Compare by eye.') +
+        '</p>' + grid(rest);
+    }
+    wrap.innerHTML = html;
+  }
+
+  function openWhaleDetail(i, rows) {
+    /*
+      rows lets Whale Search open this same card. The card is the whole reason
+      the search returns whale-log shaped rows: one renderer, so an animal
+      reads identically whether you found it by searching or by scrolling the
+      log. Back goes wherever you came from.
+    */
+    const w = (rows || whaleLogData)[i];
     if (!w) return;
+    whaleDetailReturn = rows ? 'screenWhaleSearch' : 'screenWhaleLog';
     const body = document.getElementById('whaleDetailBody');
     const fmtD = iso => {
       if (!iso) return null;
@@ -6854,6 +7006,10 @@
   */
   function backToWhaleLog() {
     pinBelowHeader();
+    if (whaleDetailReturn === 'screenWhaleSearch') {
+      showScreen('screenWhaleSearch');
+      return;
+    }
     showScreen('screenWhaleLog');
     const list = document.getElementById('whaleLogList');
     if (list) list.scrollTop = whaleLogScrollTop;
