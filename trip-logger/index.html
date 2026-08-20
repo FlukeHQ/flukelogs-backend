@@ -5611,6 +5611,17 @@
     'Blue Shark':                    { icon: '🦈', color: '#2b4c7e', borderColor: '#1a3a6e' },
     'Salmon Shark':                  { icon: '🦈', color: '#2d3748', borderColor: '#1a202c' },
     'Black-footed Albatross':        { icon: '🐦', color: '#d4a017', borderColor: '#a07800' },
+    /* The Cabo set, mirrored from the widget's SPECIES_META the day Latitude
+       Encounters signed (2026-08-20). Same colours on both surfaces on
+       purpose: a pin must mean the same thing to the captain and the guest. */
+    'Dolphin':                       { icon: '🐬', color: '#0ea5e9', borderColor: '#0369a1' },
+    'Mobula Ray':                    { icon: '🐟', color: '#0d9488', borderColor: '#115e59' },
+    'Manta Ray':                     { icon: '🐟', color: '#134e4a', borderColor: '#042f2e' },
+    'Cownose Ray':                   { icon: '🐟', color: '#b45309', borderColor: '#78350f' },
+    'Sea Turtle':                    { icon: '🐢', color: '#16a34a', borderColor: '#14532d' },
+    'California Sea Lion':           { icon: '🦭', color: '#92400e', borderColor: '#5b2c0e' },
+    'False Killer Whale':            { icon: '🐋', color: '#1e293b', borderColor: '#0f172a' },
+    'Whale Shark':                   { icon: '🦈', color: '#1d4ed8', borderColor: '#172554' },
     'default':                       { icon: '🌊', color: '#4a5568', borderColor: '#2d3748' },
   };
 
@@ -5634,6 +5645,14 @@
     if (name && M[name]) return M[name];
     const n = String(name || '').toLowerCase();
     if (!n) return M['default'];
+    /*
+      Before the orca rule, necessarily: "false killer whale" contains
+      "killer whale", so the order of these two lines is the difference
+      between a false killer whale and an orca on the captain's map. They
+      are different genera, and a captain in Cabo telling guests "orca"
+      off this screen would be wrong out loud.
+    */
+    if (n.includes('false killer')) return M['False Killer Whale'];
     if (n.includes('orca') || n.includes('killer whale')) return M['Orca'];
     if (n.includes('humpback')) return M['Humpback Whale'];
     if (n.includes('blue whale')) return M['Blue Whale'];
@@ -5649,8 +5668,14 @@
     if (n.includes('harbor porpoise') || n.includes('harbour porpoise')) return M['Harbor Porpoise'];
     if (n.includes('dolphin')) return M['Common Dolphin'];
     if (n.includes('otter')) return M['Sea Otter'];
-    if (n.includes('seal') || n.includes('sea lion')) return M['Harbor Seal'];
+    if (n.includes('sea lion')) return M['California Sea Lion'];
+    if (n.includes('seal')) return M['Harbor Seal'];
+    if (n.includes('mobula')) return M['Mobula Ray'];
+    if (n.includes('manta')) return M['Manta Ray'];
+    if (n.includes('cownose') || n.includes('cow nose')) return M['Cownose Ray'];
+    if (n.includes('turtle')) return M['Sea Turtle'];
     if (n.includes('mola') || n.includes('sunfish')) return M['Mola Mola'];
+    if (n.includes('whale shark')) return M['Whale Shark'];
     if (n.includes('blue shark')) return M['Blue Shark'];
     if (n.includes('salmon shark')) return M['Salmon Shark'];
     if (n.includes('shark')) return M['White Shark'];
