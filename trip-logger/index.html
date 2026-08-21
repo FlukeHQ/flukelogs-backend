@@ -4833,6 +4833,24 @@
 
     setRibbonForLoggedIn();
 
+    /*
+      Tell the server the app was opened, at most twice a day, and never
+      awaited: adoption is invisible without this (Discovery and Pacwhale
+      evaporated and nobody could tell if they ever opened the app again),
+      but the app booting owes this call nothing, so a failure or a dead
+      connection costs a missing row and nothing else.
+    */
+    try {
+      const last = Number(localStorage.getItem('flukelogs_open_ping') || 0);
+      if (Date.now() - last > 12 * 60 * 60 * 1000) {
+        localStorage.setItem('flukelogs_open_ping', String(Date.now()));
+        fetch('/api/app-open', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        }).catch(() => {});
+      }
+    } catch (e) { /* localStorage full or blocked; skip the ping */ }
+
     // Pull per-operator config (logo, species list, buoy station, etc.).
     // Best-effort — if /api/me fails we proceed with hardcoded defaults so
     // the captain can still log a trip offline-ish.
