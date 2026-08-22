@@ -445,6 +445,11 @@
   .feed-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
   .feed-header h3 { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.28em; color: var(--text-dim); }
   .feed-count { font-size: 10px; color: var(--text-faint); letter-spacing: 0.18em; text-transform: uppercase; font-weight: 600; }
+  .feed-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0 4px; }
+  .feed-pager[hidden] { display: none; }
+  .feed-pager-btn { background: none; border: 1px solid var(--line, rgba(255,255,255,.14)); color: inherit; font: inherit; font-size: 12.5px; letter-spacing: .08em; text-transform: uppercase; padding: 9px 18px; border-radius: 999px; cursor: pointer; opacity: .85; white-space: nowrap; }
+  .feed-pager-btn:disabled { opacity: .28; cursor: default; }
+  .feed-pager-label { font-size: 11px; color: var(--text-dim); letter-spacing: .12em; text-transform: uppercase; text-align: center; font-weight: 600; }
 
   .trip-card {
     background: var(--ink-3);
@@ -771,14 +776,16 @@
     <div class="state-msg"><div class="spinner"></div>Fetching sightings&hellip;</div>
   </div>
 
-  <!-- The feed serves the newest ~100 sightings; this pulls the season's
-       earlier trips in pages so June is still reachable in August. Hidden
-       until the first load says there is more. -->
-  <div id="feed-more-wrap" style="display:none; text-align:center; margin:14px 0 4px;">
-    <button id="feed-more-btn" type="button" onclick="loadEarlierTrips()"
-      style="background:none; border:1px solid var(--line, rgba(255,255,255,.14)); color:inherit; font:inherit; font-size:12.5px; letter-spacing:.08em; text-transform:uppercase; padding:9px 22px; border-radius:999px; cursor:pointer; opacity:.85;">
-      Show earlier trips
-    </button>
+  <!-- The trip log is paged, ten trips at a time, never splitting a day.
+       Slater, 2026-08-20: Princess's embed opened on forty cards stacked
+       under the map, and the pages should replace each other, not keep
+       scrolling downwards. Older walks back through the season; when the
+       loaded data runs out it fetches the next chunk from the server first
+       (the old Show earlier trips, folded into the same button). -->
+  <div class="feed-pager" id="feed-pager" hidden>
+    <button class="feed-pager-btn" id="feed-newer" type="button" onclick="feedGo(-1)" aria-label="Newer trips">&lsaquo; Newer</button>
+    <div class="feed-pager-label" id="feed-pager-label"></div>
+    <button class="feed-pager-btn" id="feed-older" type="button" onclick="feedGo(1)" aria-label="Older trips">Older &rsaquo;</button>
   </div>
 
   <div class="cta-strip" id="ctaStrip" hidden>
@@ -1098,7 +1105,7 @@ function refreshMarkers() {
   // basemap, especially for the pale dolphin colors).
   const dataToShow = activeTripKey
     ? allData.filter(s => s.trip_id === activeTripKey)
-    : allData;
+    : (feedVisibleTrips.size ? allData.filter(s => feedVisibleTrips.has(s.trip_id)) : allData);
 
   dataToShow.forEach(s => {
     if (!s.lat || !s.lng) return;
@@ -1196,16 +1203,15 @@ let feedNextBefore = null;
 let feedLoadingMore = false;
 
 function setFeedMoreVisible(on) {
-  const wrap = document.getElementById('feed-more-wrap');
-  if (wrap) wrap.style.display = on ? '' : 'none';
+  // Kept for its callers; the pager reads feedNextBefore directly.
+  if (typeof renderPager === 'function') renderPager();
 }
 
 async function loadEarlierTrips() {
   if (feedLoadingMore || !feedNextBefore) return;
   feedLoadingMore = true;
-  const btn = document.getElementById('feed-more-btn');
-  const label = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
+  const btn = null;
+  const label = '';
   try {
     const op = OP.slug ? encodeURIComponent(OP.slug) : '';
     const res = await fetch(`/api/widget-data?op=${op}&before=${encodeURIComponent(feedNextBefore)}`,
@@ -2336,10 +2342,101 @@ function applyFeedFilter() {
 }
 
 // ── Feed ──────────────────────────────────────────────────────────────────────
+/*
+  Pages of the trip log.
+
+  Ten trips a page, but a day is never split: if the tenth card lands in
+  the middle of a Tuesday, the page runs on until Tuesday is whole, so no
+  visitor ever sees "Tuesday, continued" at the top of a page. Princess at
+  three or four trips a day gets ten to thirteen cards, about three days; a
+  six-pack at one or two a day gets a week. A hard ceiling keeps a freak
+  day from making one page a wall.
+
+  The map follows the page. With no trip selected it shows the pins of the
+  trips on screen, which is the thing pages make possible: a page IS a few
+  days of where the whales were, overlaid.
+*/
+const FEED_PAGE_SIZE = 10;
+const FEED_PAGE_MAX = 16;
+let feedPage = 0;
+let feedPages = [];          // arrays of [tripKey, sightings]
+let feedVisibleTrips = new Set();
+
+function paginateTrips(trips) {
+  const pages = [];
+  let cur = [];
+  const dayOf = t => (t[1][0].trip_date || '').slice(0, 10);
+  for (let i = 0; i < trips.length; i++) {
+    cur.push(trips[i]);
+    const next = trips[i + 1];
+    const dayEnds = !next || dayOf(next) !== dayOf(trips[i]);
+    if ((cur.length >= FEED_PAGE_SIZE && dayEnds) || cur.length >= FEED_PAGE_MAX) {
+      pages.push(cur); cur = [];
+    }
+  }
+  if (cur.length) pages.push(cur);
+  return pages;
+}
+
+function feedPageLabel(page) {
+  if (!page || !page.length) return '';
+  const newest = (page[0][1][0].trip_date || '').slice(0, 10);
+  const oldest = (page[page.length - 1][1][0].trip_date || '').slice(0, 10);
+  const a = fmtDate(oldest), b = fmtDate(newest);
+  return a === b ? a : `${a} \u2013 ${b}`;
+}
+
+function renderPager() {
+  const pager = document.getElementById('feed-pager');
+  const label = document.getElementById('feed-pager-label');
+  const newer = document.getElementById('feed-newer');
+  const older = document.getElementById('feed-older');
+  if (!pager) return;
+  const more = feedNextBefore != null;           // the server has older days
+  const single = feedPages.length <= 1 && !more;
+  pager.hidden = single;
+  if (single) return;
+  const total = feedPages.length + (more ? '+' : '');
+  label.textContent = `${feedPageLabel(feedPages[feedPage])} \u00b7 ${feedPage + 1} of ${total}`;
+  newer.disabled = feedPage === 0;
+  older.disabled = feedPage >= feedPages.length - 1 && !more;
+}
+
+/*
+  Older walks back; when the loaded pages run out it asks the server for
+  the next chunk, then turns the page. Newer is never a fetch. Either way
+  the page is replaced in place and the log scrolls back to its top, so the
+  visitor lands on the first card of the new page, not the bottom of it.
+*/
+async function feedGo(delta) {
+  const target = feedPage + delta;
+  if (target < 0) return;
+  if (target >= feedPages.length) {
+    if (feedNextBefore == null || feedLoadingMore) return;
+    const older = document.getElementById('feed-older');
+    if (older) { older.disabled = true; older.textContent = 'Loading\u2026'; }
+    await loadEarlierTrips();
+    if (older) older.textContent = 'Older \u203a';
+    if (target >= feedPages.length) { renderPager(); return; }
+  }
+  feedPage = target;
+  renderFeed(allData);
+  refreshMarkers();
+  const head = document.querySelector('.feed-header');
+  if (head) head.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (typeof sendHeight === 'function') sendHeight();
+}
+
 function renderFeed(data) {
   const list = document.getElementById('feed-list');
-  const trips = groupByTrip(data);
-  document.getElementById('feed-count').textContent = `${trips.length} trip${trips.length !== 1 ? 's' : ''}`;
+  const allTrips = groupByTrip(data);
+  feedPages = paginateTrips(allTrips);
+  if (feedPage >= feedPages.length) feedPage = Math.max(0, feedPages.length - 1);
+  const trips = feedPages[feedPage] || [];
+  feedVisibleTrips = new Set(trips.map(t => t[0]));
+  renderPager();
+  const loaded = allTrips.length;
+  document.getElementById('feed-count').textContent = `${loaded} trip${loaded !== 1 ? 's' : ''}${feedNextBefore != null ? ' loaded' : ''}`;
   if (!trips.length) { list.innerHTML = '<div class="state-msg">No sightings recorded yet.</div>'; return; }
 
   // Every card title leads with its scheduled departure ("9:00 AM"), not the
@@ -2925,6 +3022,11 @@ function applyInitialTripFromUrl() {
     // empty view.
     var hasIt = allData.some(s => s.trip_id === trip);
     if (!hasIt) return;
+    // Turn to the page that holds the shared trip before looking for its
+    // card, otherwise a link to last week's trip lands on page one with
+    // nothing selected.
+    var pageIdx = feedPages.findIndex(pg => pg.some(t => t[0] === trip));
+    if (pageIdx >= 0 && pageIdx !== feedPage) { feedPage = pageIdx; renderFeed(allData); }
     activeTripKey = trip;
     var header = document.querySelector('.trip-date-header[data-trip="' + trip + '"]');
     if (header) {
