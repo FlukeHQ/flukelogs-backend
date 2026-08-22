@@ -1453,6 +1453,9 @@ function refreshMarkers() {
     hint.textContent = `Showing ${fmtDateShort(sel.trip_date)}${sel.trip_part ? ' ' + sel.trip_part.toLowerCase() : ''} — click map to deselect`;
   } else if (activeFilter) {
     hint.textContent = `Highlighting: ${activeFilter}`;
+  } else if (PINS_CACHE.has(scopeKey(SCOPE)) && !isDefaultScope()) {
+    // History on the map: say which history, not which page of the log.
+    hint.textContent = `Showing ${SCOPE.kind === 'all' ? 'all time' : scopeLabel(SCOPE)} \u2014 click a trip to see its pins`;
   } else if (feedPages.length > 1 && feedPages[feedPage]) {
     hint.textContent = `Showing ${feedPageLabel(feedPages[feedPage])} \u2014 click a trip to see its pins`;
   } else {
