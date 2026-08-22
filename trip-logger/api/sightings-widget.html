@@ -2553,7 +2553,7 @@ function renderSegmentedRail(data) {
     });
   }
 
-  renderRailForKind(aggregateByFrequency(data).species);
+  renderRailForKind(scoped ? scoped.species : aggregateByFrequency(data).species);
 }
 
 function renderRailForKind(speciesPrecomputed) {
