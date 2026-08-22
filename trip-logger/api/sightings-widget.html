@@ -2699,6 +2699,22 @@ const FEED_PAGE_MAX = 16;
 let feedPage = 0;
 let feedPages = [];          // arrays of [tripKey, sightings]
 let feedVisibleTrips = new Set();
+let feedOpenKey = null;   // the card a page opens by default, see pickOpenTrip
+
+/*
+  Which card a page opens. The newest trip, unless it has no photos and a
+  later one on the page does. Slater, 2026-08-22: Princess does not carry a
+  photographer on every trip, so the newest card was routinely the barest
+  one on the page, open, while the trip with the gallery sat folded below
+  it. A visitor's first impression should be a trip with pictures. The
+  map focus and the auto replay follow the same choice, so the open card,
+  the pins and the playback all agree.
+*/
+function pickOpenTrip(trips) {
+  if (!trips || !trips.length) return null;
+  const withPhotos = trips.find(t => (tripPhotosByTrip.get(t[0]) || []).length > 0);
+  return (withPhotos || trips[0])[0];
+}
 
 function paginateTrips(trips) {
   const pages = [];
@@ -2895,7 +2911,8 @@ function renderFeed(data) {
   // Accordion: the first card on the page opens, the rest fold to their
   // header. The map can only follow one trip, so one open card is the
   // honest shape; tapping a header opens it and closes the others.
-  list.querySelectorAll('.trip-card').forEach((c, i) => c.classList.toggle('collapsed', i !== 0));
+  feedOpenKey = pickOpenTrip(trips);
+  list.querySelectorAll('.trip-card').forEach(c => c.classList.toggle('collapsed', c.dataset.trip !== feedOpenKey));
 
   // Share button on each trip card — opens the iOS / Android / desktop
   // native share sheet via Web Share API (Safari, Chrome, Edge). Firefox
@@ -3476,9 +3493,9 @@ function applyInitialTripFromUrl() {
     // while a trip is broadcasting: the live boat + live dots own the map,
     // and yesterday's pins next to them read as a second boat.
     if (!activeTripKey && allData.length && !liveNow) {
-      const newest = groupByTrip(allData)[0];
-      if (newest) {
-        activeTripKey = autoSelectedTripKey = newest[0];
+      const opened = feedOpenKey ? [feedOpenKey] : groupByTrip(allData)[0];
+      if (opened) {
+        activeTripKey = autoSelectedTripKey = opened[0];
         const header = document.querySelector('.trip-date-header[data-trip="' + activeTripKey + '"]');
         if (header) {
           header.classList.add('active-trip');
