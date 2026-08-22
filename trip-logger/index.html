@@ -2154,7 +2154,7 @@
            permission was granted from the web layer; it turns amber and
            plain-spoken when the track has gone quiet, which is how a wrong
            answer to the dialog actually shows up. -->
-      <div id="locationNote" style="display:none;grid-column:span 3;font-size:12px;line-height:1.45;color:var(--text-dim);padding-top:6px;overflow-wrap:anywhere;padding-right:8px;">
+      <div id="locationNote" style="display:none;grid-column:span 3;font-size:12px;line-height:1.45;color:var(--text-dim);padding-top:6px;overflow-wrap:anywhere;padding-right:16px;">
         <span id="locationNoteText">Phone in your pocket? Location must be set to <strong>Allow all the time</strong>.</span>
         <button type="button" onclick="openLocationSettings()" style="all:unset;cursor:pointer;color:var(--warn,#e0a458);font-weight:600;margin-left:6px;">Location settings</button>
       </div>
@@ -2993,8 +2993,40 @@
     Always sensibly and no iOS first trip has ever failed this way.
   */
   const LOC_EXPLAINER_KEY = 'flukelogs_loc_explainer_ok';
+  /*
+    Proof that background location is really granted, without reading the
+    permission (the web layer cannot). The only thing that matters is
+    whether fixes keep arriving with the screen off, and the app can see
+    that directly: the page reports itself hidden, and either fixes keep
+    coming or they stop. Five fixes while hidden proves Allow all the time,
+    and the note goes away for good. A quiet spell that begins while hidden
+    proves the opposite and brings it back, amber. Slater, 2026-08-22:
+    "a check if they've done it so that it goes away forever."
+  */
+  const LOC_PROVEN_KEY = 'flukelogs_loc_always_proven';
+  const BG_FIXES_TO_PROVE = 5;
+  let pageHidden = document.visibilityState === 'hidden';
+  let bgFixCount = 0;
+  document.addEventListener('visibilitychange', () => {
+    pageHidden = document.visibilityState === 'hidden';
+  });
+  function locationProven() {
+    try { return !!localStorage.getItem(LOC_PROVEN_KEY); } catch (e) { return false; }
+  }
+  function noteBackgroundFix() {
+    if (!isAndroidApp || !pageHidden || locationProven()) return;
+    bgFixCount += 1;
+    if (bgFixCount >= BG_FIXES_TO_PROVE) {
+      try { localStorage.setItem(LOC_PROVEN_KEY, String(Date.now())); } catch (e) {}
+      showLocationNote(0);
+    }
+  }
+  function unproveLocation() {
+    try { localStorage.removeItem(LOC_PROVEN_KEY); } catch (e) {}
+    bgFixCount = 0;
+  }
   function needsLocationExplainer() {
-    if (!isAndroidApp) return false;
+    if (!isAndroidApp || locationProven()) return false;
     try { return !localStorage.getItem(LOC_EXPLAINER_KEY); } catch (e) { return false; }
   }
   function acceptLocationExplainer() {
@@ -3017,6 +3049,10 @@
     const txt = document.getElementById('locationNoteText');
     if (!el || !txt) return;
     if (!isAndroidApp || !trip.startTime || trip.endTime) { el.style.display = 'none'; return; }
+    // Three quiet minutes that began with the screen off is the failure
+    // itself, whatever was proven before: the permission may have changed.
+    if (quietMin >= 3 && pageHidden) unproveLocation();
+    if (locationProven()) { el.style.display = 'none'; return; }
     el.style.display = '';
     if (quietMin >= 3) {
       el.style.color = 'var(--warn, #e0a458)';
@@ -3066,6 +3102,7 @@
       }
     }
     trip.lastFixAt = nowMs;
+    noteBackgroundFix();
     if (trip.prevLat !== null && trip.prevLng !== null) {
       const d = haversineNM(trip.prevLat, trip.prevLng, newLat, newLng);
       if (d < 0.5) trip.distanceNM += d;
