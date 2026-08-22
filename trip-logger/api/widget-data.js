@@ -426,9 +426,13 @@ module.exports = async function handler(req, res) {
     let tracked = [];
     if (showMap) {
       try {
-        const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/widget_tracked_trips`, {
+        // process.env directly: this module keeps its credentials as locals
+        // inside each helper, and a bare SUPABASE_URL here was a
+        // ReferenceError that the catch below turned into an empty list and
+        // no replay buttons, silently. Caught by the preview, not by a log.
+        const r = await fetch(`${process.env.SUPABASE_URL}/rest/v1/rpc/widget_tracked_trips`, {
           method: 'POST',
-          headers: { apikey: SUPABASE_SECRET_KEY, Authorization: `Bearer ${SUPABASE_SECRET_KEY}`, 'Content-Type': 'application/json' },
+          headers: { apikey: process.env.SUPABASE_SECRET_KEY, Authorization: `Bearer ${process.env.SUPABASE_SECRET_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ p_slug: String(slug) }),
         });
         if (r.ok) tracked = (await r.json()).map(x => x.trip_id);
