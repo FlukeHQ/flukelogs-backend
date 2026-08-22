@@ -2510,8 +2510,24 @@ function renderLegend(data) {
 function renderSegmentedRail(data) {
   // Counts here are TRIPS the group appeared on, not animals seen, for the
   // same reason the legend changed: pod size otherwise drowns out whales.
-  const totals = tripsByKind(data);
-  const total = new Set(data.map(x => x.trip_id || (x.trip_date || '').slice(0, 10)).filter(Boolean)).size;
+  /*
+    From the scope's history when stats have landed, like the desktop
+    legend, not from the loaded feed. Slater's phone caught the gap: the
+    rail said Common Dolphin 50% under a 2026 chip whose legend said 38%,
+    because this surface was still counting the sixteen loaded trips. The
+    per-kind count is the largest single species in the kind, which is
+    exact whenever one species carries the group (humpbacks, every trip)
+    and a floor otherwise; the stats are months x species and cannot
+    de-duplicate a trip that saw two dolphin species.
+  */
+  const hasStats = Object.keys(STATS.months).length > 0;
+  const scoped = hasStats ? statsForScope(SCOPE) : null;
+  const totals = scoped
+    ? scoped.species.reduce((t, sp) => { t[sp.kind] = Math.max(t[sp.kind] || 0, sp.trips); return t; }, { whale: 0, dolphin: 0, bird: 0, other: 0 })
+    : tripsByKind(data);
+  const total = scoped
+    ? scoped.totalTrips
+    : new Set(data.map(x => x.trip_id || (x.trip_date || '').slice(0, 10)).filter(Boolean)).size;
 
   const segs = [
     { id: 'all',     label: 'All',      count: total },
@@ -2543,7 +2559,8 @@ function renderSegmentedRail(data) {
 function renderRailForKind(speciesPrecomputed) {
   const rail = document.getElementById('species-rail');
   if (!rail) return;
-  const all = speciesPrecomputed || aggregateByFrequency(allData).species;
+  const all = speciesPrecomputed
+    || (Object.keys(STATS.months).length ? statsForScope(SCOPE).species : aggregateByFrequency(allData).species);
   const visible = activeKind === 'all' ? all : all.filter(s => s.kind === activeKind);
 
   const pills = [];
