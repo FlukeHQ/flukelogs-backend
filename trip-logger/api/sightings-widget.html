@@ -262,7 +262,12 @@
   .sp-close { margin-left: auto; background: none; border: 1px solid var(--hair-2); color: var(--text-dim); border-radius: 999px; width: 28px; height: 28px; cursor: pointer; font-size: 14px; line-height: 1; }
   @media (max-width: 720px) {
     .species-panel { grid-template-columns: 1fr; gap: 14px; }
-    .scope-months { grid-template-columns: repeat(6, 1fr); }
+    /* One row of twelve on a phone, like a calendar strip: two rows of six
+       stacked with the chips, the segmented control and the species rail
+       put a wall of controls above the map. 12 boxes in 375px is ~29px
+       each, enough for a single letter. */
+    .scope-months { grid-template-columns: repeat(12, 1fr); gap: 2px; }
+    .scope-month { font-size: 9px; padding: 5px 0; }
   }
   /* Accordion: cards fold to their header; the open one shows its body. */
   .trip-card.collapsed .trip-body, .trip-card.collapsed .trip-sightings, .trip-card.collapsed .trip-audio, .trip-card.collapsed .gv-inline { display: none; }
