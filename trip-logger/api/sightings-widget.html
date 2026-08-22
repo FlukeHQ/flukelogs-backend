@@ -1156,6 +1156,8 @@ function refreshMarkers() {
     hint.textContent = `Showing ${fmtDateShort(sel.trip_date)}${sel.trip_part ? ' ' + sel.trip_part.toLowerCase() : ''} — click map to deselect`;
   } else if (activeFilter) {
     hint.textContent = `Highlighting: ${activeFilter}`;
+  } else if (feedPages.length > 1 && feedPages[feedPage]) {
+    hint.textContent = `Showing ${feedPageLabel(feedPages[feedPage])} \u2014 click a trip to see its pins`;
   } else {
     hint.textContent = 'Click a trip to see its pins';
   }
@@ -2378,12 +2380,25 @@ function paginateTrips(trips) {
   return pages;
 }
 
+/*
+  Short dates for the pager: "Aug 18 \u2013 21", "Jul 30 \u2013 Aug 2", "Aug 21".
+  fmtDate's full "Tuesday, August 18, 2026" is right on a card and far too
+  long between two buttons; the first preview wrapped it onto three lines.
+*/
+function fmtShortDay(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 function feedPageLabel(page) {
   if (!page || !page.length) return '';
   const newest = (page[0][1][0].trip_date || '').slice(0, 10);
   const oldest = (page[page.length - 1][1][0].trip_date || '').slice(0, 10);
-  const a = fmtDate(oldest), b = fmtDate(newest);
-  return a === b ? a : `${a} \u2013 ${b}`;
+  if (newest === oldest) return fmtShortDay(newest);
+  const a = fmtShortDay(oldest), b = fmtShortDay(newest);
+  // Same month: "Aug 18 \u2013 21". Different months: "Jul 30 \u2013 Aug 2".
+  const sameMonth = oldest.slice(0, 7) === newest.slice(0, 7);
+  return sameMonth ? `${a} \u2013 ${b.split(' ')[1]}` : `${a} \u2013 ${b}`;
 }
 
 function renderPager() {
@@ -2420,8 +2435,21 @@ async function feedGo(delta) {
     if (target >= feedPages.length) { renderPager(); return; }
   }
   feedPage = target;
+  /*
+    A page turn releases the selected trip. The first preview kept Friday's
+    pins on the map while the list had moved to Monday, because the newest
+    trip is auto-selected on load and nothing let go of it. Whatever was
+    selected is no longer on screen, so the map shows the page instead and
+    fits to it: a few days of where the whales were, overlaid.
+  */
+  activeTripKey = null;
+  autoSelectedTripKey = null;
   renderFeed(allData);
   refreshMarkers();
+  if (map) {
+    const b = pinBounds();
+    if (b.isValid()) map.fitBounds(b, { padding: [50, 50], maxZoom: 12, animate: true });
+  }
   const head = document.querySelector('.feed-header');
   if (head) head.scrollIntoView({ behavior: 'smooth', block: 'start' });
   if (typeof sendHeight === 'function') sendHeight();
