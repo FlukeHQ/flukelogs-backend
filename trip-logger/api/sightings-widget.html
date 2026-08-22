@@ -1393,7 +1393,23 @@ function refreshMarkers() {
     const meta = sm(s.species);
     let m;
 
-    if (meta.isSplit) {
+    /*
+      History pins (a scope's, from widget-stats) draw small and a little
+      faint: a lifetime is hundreds of dots, and at full size they pile into
+      a blob. Small dots read as density, which is the truth of them. Orcas
+      keep their black and white as a plain circle here; the split icon is
+      for the handful of pins on a trip, not a season of them.
+    */
+    if (s._scope) {
+      m = L.circleMarker([+s.lat, +s.lng], {
+        radius: activeFilter ? 5 : 3.8,
+        fillColor: meta.isSplit ? '#ffffff' : meta.color,
+        color: meta.borderColor || '#000',
+        weight: 1,
+        fillOpacity: 0.72,
+        opacity: 0.85,
+      });
+    } else if (meta.isSplit) {
       m = L.marker([+s.lat, +s.lng], { icon: createOrcaIcon(), opacity: 1 });
     } else {
       m = L.circleMarker([+s.lat, +s.lng], {
@@ -1408,6 +1424,8 @@ function refreshMarkers() {
 
     const depthLabel = fmtDepth(s.depth_meters);
     const depthLine = depthLabel ? `Depth: <strong>${depthLabel}</strong><br>` : '';
+    // A history pin carries no count or depth, only where and when.
+    const countLine = s._scope ? '' : `Count: <strong>${s.count ?? '\u2014'}</strong><br>`;
     // Where it was, in plotter format. Only on finished trips: the live
     // layer's positions are deliberately delayed and snapped to a coarse
     // grid, so printing coordinates there would imply a precision that
@@ -1415,8 +1433,7 @@ function refreshMarkers() {
     const coordLine = fmtLatLng(s.lat, s.lng);
     m.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
       <strong style="font-size:13px;">${meta.icon} ${s.species || 'Unknown'}</strong><br>
-      Count: <strong>${s.count ?? '—'}</strong><br>
-      ${depthLine}${fmtDate(s.trip_date)}${coordLine ? `<br><span style="white-space:nowrap;">${coordLine}</span>` : ''}
+      ${countLine}${s._scope ? '' : depthLine}${fmtDate(s.trip_date)}${coordLine ? `<br><span style="white-space:nowrap;">${coordLine}</span>` : ''}
     </div>`);
     m._tripKey = s.trip_id;
     m._species = s.species;
@@ -2581,9 +2598,13 @@ function syncFilterUI() {
       status.textContent = `${n} ${activeFilter} pin${n === 1 ? '' : 's'} \u00b7 ${SCOPE.kind === 'all' ? 'all time' : scopeLabel(SCOPE)}.`;
     } else if (!isDefaultScope() && pins) {
       status.textContent = `${pins.length} pin${pins.length === 1 ? '' : 's'} \u00b7 ${SCOPE.kind === 'all' ? 'all time' : scopeLabel(SCOPE)}.`;
+    } else if (activeTripKey) {
+      const sel = allData.filter(s => s.trip_id === activeTripKey && s.lat && s.lng);
+      const d = sel[0] && sel[0].trip_date ? fmtDateShort(sel[0].trip_date) : 'this trip';
+      status.textContent = `${sel.length} pin${sel.length === 1 ? '' : 's'} \u00b7 ${d}.`;
     } else {
       const n = allData.filter(s => s.lat && s.lng && (!feedVisibleTrips.size || feedVisibleTrips.has(s.trip_id))).length;
-      status.textContent = `Showing ${n} pin${n === 1 ? '' : 's'} from the trips below.`;
+      status.textContent = `${n} pin${n === 1 ? '' : 's'} \u00b7 the trips below.`;
     }
   }
 }
@@ -2699,10 +2720,12 @@ function renderPager() {
   if (!pager) return;
   const more = feedNextBefore != null;           // the server has older days
   const single = feedPages.length <= 1 && !more;
+  const total = feedPages.length + (more ? '+' : '');
+  // Label first, then decide visibility: a hidden pager must not keep a
+  // stale label for the moment it reappears.
+  label.textContent = feedPages[feedPage] ? `${feedPageLabel(feedPages[feedPage])} \u00b7 ${feedPage + 1} of ${total}` : '';
   pager.hidden = single;
   if (single) return;
-  const total = feedPages.length + (more ? '+' : '');
-  label.textContent = `${feedPageLabel(feedPages[feedPage])} \u00b7 ${feedPage + 1} of ${total}`;
   newer.disabled = feedPage === 0;
   older.disabled = feedPage >= feedPages.length - 1 && !more;
 }
