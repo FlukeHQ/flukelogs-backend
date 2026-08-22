@@ -228,6 +228,52 @@
     padding-bottom: 6px;
   }
   .legend-list { border-top: 1px solid var(--hair); }
+  .scope-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .scope-chip {
+    background: transparent; border: 1px solid var(--hair-2); color: var(--text-dim);
+    font-family: "Open Sans", sans-serif; font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+    padding: 6px 11px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+  }
+  .scope-chip.is-active { background: var(--text); color: var(--ink-1, #0b0f14); border-color: var(--text); font-weight: 600; }
+  .scope-months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; margin: 0 0 12px; }
+  .scope-months[hidden] { display: none; }
+  .scope-month {
+    background: transparent; border: 1px solid var(--hair); color: var(--text-faint);
+    font-family: "Open Sans", sans-serif; font-size: 10px; padding: 5px 0; border-radius: 6px; cursor: pointer;
+  }
+  .scope-month.has-trips { color: var(--text-dim); border-color: var(--hair-2); }
+  .scope-month.is-active { background: var(--text); color: var(--ink-1, #0b0f14); border-color: var(--text); font-weight: 700; }
+  .scope-month:disabled { opacity: .3; cursor: default; }
+  .species-panel {
+    border: 1px solid var(--hair); border-radius: 14px; background: var(--ink-3);
+    padding: 16px 18px; margin: 0 0 24px; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 18px; align-items: center;
+  }
+  .species-panel[hidden] { display: none; }
+  .sp-name { font-family: 'Fraunces', Georgia, serif; font-size: 22px; color: var(--text); margin: 0 0 6px; display: flex; align-items: center; gap: 10px; }
+  .sp-line { font-size: 13.5px; color: var(--text-dim); line-height: 1.5; margin: 0; }
+  .sp-line strong { color: var(--text); font-weight: 600; }
+  .sp-best { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-size: 13px; color: var(--text-faint); margin: 8px 0 0; }
+  .sp-months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; align-items: end; height: 72px; }
+  .sp-month { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; }
+  .sp-bar { width: 100%; border-radius: 3px 3px 0 0; min-height: 2px; opacity: .85; }
+  .sp-bar.is-scope { opacity: 1; box-shadow: 0 0 0 1px var(--text); }
+  .sp-mlabel { font-size: 9px; letter-spacing: .06em; color: var(--text-faint); text-transform: uppercase; }
+  .sp-mlabel.is-scope { color: var(--text); font-weight: 700; }
+  .sp-close { margin-left: auto; background: none; border: 1px solid var(--hair-2); color: var(--text-dim); border-radius: 999px; width: 28px; height: 28px; cursor: pointer; font-size: 14px; line-height: 1; }
+  @media (max-width: 720px) {
+    .species-panel { grid-template-columns: 1fr; gap: 14px; }
+    /* One row of twelve on a phone, like a calendar strip: two rows of six
+       stacked with the chips, the segmented control and the species rail
+       put a wall of controls above the map. 12 boxes in 375px is ~29px
+       each, enough for a single letter. */
+    .scope-months { grid-template-columns: repeat(12, 1fr); gap: 2px; }
+    .scope-month { font-size: 9px; padding: 5px 0; }
+  }
+  /* Accordion: cards fold to their header; the open one shows its body. */
+  .trip-card.collapsed .trip-body, .trip-card.collapsed .trip-sightings, .trip-card.collapsed .trip-audio, .trip-card.collapsed .gv-inline { display: none; }
+  .trip-card.collapsed .trip-date-header { border-bottom: none; }
+  .trip-card .trip-date-header::after { content: '\25BE'; color: var(--text-faint); font-size: 11px; margin-left: 10px; transition: transform .15s; }
+  .trip-card.collapsed .trip-date-header::after { transform: rotate(-90deg); }
   .legend-row {
     position: relative;
     width: 100%;
@@ -445,6 +491,11 @@
   .feed-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
   .feed-header h3 { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.28em; color: var(--text-dim); }
   .feed-count { font-size: 10px; color: var(--text-faint); letter-spacing: 0.18em; text-transform: uppercase; font-weight: 600; }
+  .feed-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0 4px; }
+  .feed-pager[hidden] { display: none; }
+  .feed-pager-btn { background: none; border: 1px solid var(--line, rgba(255,255,255,.14)); color: inherit; font: inherit; font-size: 12.5px; letter-spacing: .08em; text-transform: uppercase; padding: 9px 18px; border-radius: 999px; cursor: pointer; opacity: .85; white-space: nowrap; }
+  .feed-pager-btn:disabled { opacity: .28; cursor: default; }
+  .feed-pager-label { font-size: 11px; color: var(--text-dim); letter-spacing: .12em; text-transform: uppercase; text-align: center; font-weight: 600; }
 
   .trip-card {
     background: var(--ink-3);
@@ -733,12 +784,20 @@
   <!-- Filter + Map: D · legend column on desktop, C · segmented + rail on mobile -->
   <div class="fm-grid">
     <aside class="legend-col" id="legend-col">
+      <!-- Time scope. One control drives the odds, the map pins and the trip
+           log: this month, any year, or lifetime. Years accumulate as chips;
+           inside a year, a month strip walks to last October. Slater,
+           2026-08-21: think about the future as this grows. -->
+      <div class="scope-bar" id="scope-bar"></div>
+      <div class="scope-months" id="scope-months" hidden></div>
       <div class="legend-head" id="legend-head">Species &mdash; count</div>
       <div class="legend-list" id="legend-list"></div>
       <div class="legend-status" id="legend-status"></div>
     </aside>
 
     <div class="filter-mobile" id="filter-mobile">
+      <div class="scope-bar" id="scope-bar-m"></div>
+      <div class="scope-months" id="scope-months-m" hidden></div>
       <div class="seg-group" id="seg-group"></div>
       <div class="rail-wrap">
         <div class="species-rail" id="species-rail"></div>
@@ -763,6 +822,11 @@
     </div>
   </div>
 
+  <!-- Species panel: what a clicked animal's history says about when to
+       come. "Seen on 4 of 14 trips in August 2026 · most often in June" with
+       the year's twelve months as bars. Hidden until a species is picked. -->
+  <section class="species-panel" id="species-panel" hidden></section>
+
   <div class="feed-header">
     <h3>Trip Log</h3>
     <div class="feed-count" id="feed-count"></div>
@@ -771,14 +835,16 @@
     <div class="state-msg"><div class="spinner"></div>Fetching sightings&hellip;</div>
   </div>
 
-  <!-- The feed serves the newest ~100 sightings; this pulls the season's
-       earlier trips in pages so June is still reachable in August. Hidden
-       until the first load says there is more. -->
-  <div id="feed-more-wrap" style="display:none; text-align:center; margin:14px 0 4px;">
-    <button id="feed-more-btn" type="button" onclick="loadEarlierTrips()"
-      style="background:none; border:1px solid var(--line, rgba(255,255,255,.14)); color:inherit; font:inherit; font-size:12.5px; letter-spacing:.08em; text-transform:uppercase; padding:9px 22px; border-radius:999px; cursor:pointer; opacity:.85;">
-      Show earlier trips
-    </button>
+  <!-- The trip log is paged, ten trips at a time, never splitting a day.
+       Slater, 2026-08-20: Princess's embed opened on forty cards stacked
+       under the map, and the pages should replace each other, not keep
+       scrolling downwards. Older walks back through the season; when the
+       loaded data runs out it fetches the next chunk from the server first
+       (the old Show earlier trips, folded into the same button). -->
+  <div class="feed-pager" id="feed-pager" hidden>
+    <button class="feed-pager-btn" id="feed-newer" type="button" onclick="feedGo(-1)" aria-label="Newer trips">&lsaquo; Newer</button>
+    <div class="feed-pager-label" id="feed-pager-label"></div>
+    <button class="feed-pager-btn" id="feed-older" type="button" onclick="feedGo(1)" aria-label="Older trips">Older &rsaquo;</button>
   </div>
 
   <div class="cta-strip" id="ctaStrip" hidden>
@@ -1031,7 +1097,224 @@ let allData = [];
 let tripAudioByTrip = new Map(); // trip_id -> { audio_url, duration_seconds }
 let tripPhotosByTrip = new Map(); // trip_id -> [ { id, photo_url } ]
 let tripMetaByTrip = new Map(); // trip_id -> { boat_name, trip_time }
-let tripTrackById  = new Map();  // trip_id -> [ {lat,lng,t}, … ]  (Phase 2 breadcrumbs)
+let tripTrackById  = new Map();  // trip_id -> [ {lat,lng,t}, … ]  fetched per trip on demand
+let trackedTrips   = new Set();  // trip ids that have a breadcrumb (for the replay button)
+
+/*
+  History, and the scope that reads it.
+
+  STATS is the operator's whole record as months x species (api/widget-stats),
+  small forever. SCOPE is what the visitor is looking at: this month (the
+  default), a year, or lifetime; inside a year, one month. The legend odds,
+  the map pins and the trip log all follow it. On 1 January the default rolls
+  to the new year on its own and the old year becomes a chip.
+*/
+let STATS = { months: {}, first_trip: null };
+let SCOPE = { kind: 'month', ym: null };   // kind: month | year | all
+const PINS_CACHE = new Map();              // scope key -> [[lat,lng,species,date,trip]]
+let baseFeed = null;                       // the recent feed, to restore after a month scope
+
+function currentYM() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+function scopeKey(sc) { return sc.kind === 'all' ? 'all' : sc.kind === 'year' ? String(sc.year) : sc.ym; }
+function scopeMonths(sc) {
+  const keys = Object.keys(STATS.months).sort();
+  if (sc.kind === 'all') return keys;
+  if (sc.kind === 'year') return keys.filter(k => k.startsWith(String(sc.year)));
+  return keys.filter(k => k === sc.ym);
+}
+function monthName(ym, long) {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', long ? { month: 'long', year: 'numeric' } : { month: 'short' });
+}
+function scopeLabel(sc) {
+  if (sc.kind === 'all') return STATS.first_trip ? `Lifetime \u00b7 since ${monthName(STATS.first_trip, true)}` : 'Lifetime';
+  if (sc.kind === 'year') return String(sc.year);
+  return monthName(sc.ym, true);
+}
+function isDefaultScope() { return SCOPE.kind === 'month' && SCOPE.ym === currentYM(); }
+
+/* Odds for a scope: species -> trips seen on, over the scope's trip total. */
+function statsForScope(sc) {
+  const bySpecies = new Map();
+  let totalTrips = 0;
+  scopeMonths(sc).forEach(ym => {
+    const m = STATS.months[ym]; if (!m) return;
+    totalTrips += m.trips || 0;
+    Object.entries(m.species || {}).forEach(([name, v]) => {
+      const cur = bySpecies.get(name) || { trips: 0, animals: 0 };
+      cur.trips += v.trips || 0; cur.animals += v.animals || 0;
+      bySpecies.set(name, cur);
+    });
+  });
+  return {
+    totalTrips,
+    species: [...bySpecies.entries()].map(([name, v]) => ({
+      name, trips: v.trips, animals: v.animals,
+      pct: totalTrips ? Math.round((v.trips / totalTrips) * 100) : 0,
+      kind: speciesKind(name), meta: sm(name),
+    })).sort((a, b) => b.trips - a.trips || a.name.localeCompare(b.name)),
+  };
+}
+
+async function fetchStats() {
+  try {
+    const op = OP.slug ? encodeURIComponent(OP.slug) : '';
+    const r = await fetch(`/api/widget-stats?op=${op}`, { headers: { 'Accept': 'application/json' } });
+    if (!r.ok) return;
+    const j = await r.json();
+    STATS = { months: j.months || {}, first_trip: j.first_trip || null };
+    // Default scope: this month, unless nothing has been logged in it yet
+    // (the first days of a month, or the off season), then the latest month
+    // that has trips, so the legend never opens on an empty list.
+    const keys = Object.keys(STATS.months).sort();
+    SCOPE = { kind: 'month', ym: STATS.months[currentYM()] ? currentYM() : (keys[keys.length - 1] || currentYM()) };
+  } catch (e) { /* legend falls back to the loaded feed */ }
+}
+
+async function ensurePins(sc) {
+  const key = scopeKey(sc);
+  if (PINS_CACHE.has(key)) return PINS_CACHE.get(key);
+  try {
+    const op = OP.slug ? encodeURIComponent(OP.slug) : '';
+    const r = await fetch(`/api/widget-stats?op=${op}&pins=${encodeURIComponent(key)}`, { headers: { 'Accept': 'application/json' } });
+    const j = r.ok ? await r.json() : { pins: [] };
+    PINS_CACHE.set(key, j.pins || []);
+  } catch (e) { PINS_CACHE.set(key, []); }
+  return PINS_CACHE.get(key);
+}
+
+/* One trip's breadcrumb, fetched the first time it is needed. */
+async function ensureTrack(tripKey) {
+  if (tripTrackById.has(tripKey)) return tripTrackById.get(tripKey);
+  if (!trackedTrips.has(tripKey)) { tripTrackById.set(tripKey, []); return []; }
+  try {
+    const op = OP.slug ? encodeURIComponent(OP.slug) : '';
+    const r = await fetch(`/api/widget-data?op=${op}&track=${encodeURIComponent(tripKey)}`, { headers: { 'Accept': 'application/json' } });
+    const j = r.ok ? await r.json() : { track: [] };
+    tripTrackById.set(tripKey, Array.isArray(j.track) ? j.track : []);
+  } catch (e) { tripTrackById.set(tripKey, []); }
+  return tripTrackById.get(tripKey);
+}
+
+/* The scope control: chips, then a month strip when a year is open. */
+function renderScopeBar() {
+  const years = [...new Set(Object.keys(STATS.months).map(k => k.slice(0, 4)))].sort().reverse();
+  const chips = [];
+  chips.push(`<button class="scope-chip${SCOPE.kind === 'month' && SCOPE.ym === (STATS.months[currentYM()] ? currentYM() : SCOPE.ym) && SCOPE.kind === 'month' && !SCOPE.fromYear ? ' is-active' : ''}" data-scope="month">This month</button>`);
+  years.forEach(y => chips.push(`<button class="scope-chip${(SCOPE.kind === 'year' && String(SCOPE.year) === y) || (SCOPE.kind === 'month' && SCOPE.fromYear === y) ? ' is-active' : ''}" data-scope="year" data-year="${y}">${y}</button>`));
+  if (years.length) chips.push(`<button class="scope-chip${SCOPE.kind === 'all' ? ' is-active' : ''}" data-scope="all">Lifetime</button>`);
+  const html = chips.join('');
+  const openYear = SCOPE.kind === 'year' ? String(SCOPE.year) : (SCOPE.kind === 'month' && SCOPE.fromYear) ? SCOPE.fromYear : null;
+  const monthsHtml = openYear ? Array.from({ length: 12 }, (_, i) => {
+    const ym = `${openYear}-${String(i + 1).padStart(2, '0')}`;
+    const has = !!STATS.months[ym];
+    const active = SCOPE.kind === 'month' && SCOPE.ym === ym;
+    return `<button class="scope-month${has ? ' has-trips' : ''}${active ? ' is-active' : ''}" data-ym="${ym}"${has ? '' : ' disabled'} title="${monthName(ym, true)}">${monthName(ym).slice(0, 1)}</button>`;
+  }).join('') : '';
+  ['scope-bar', 'scope-bar-m'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = html; });
+  ['scope-months', 'scope-months-m'].forEach(id => { const el = document.getElementById(id); if (!el) return; el.innerHTML = monthsHtml; el.hidden = !openYear; });
+  document.querySelectorAll('.scope-chip').forEach(b => b.addEventListener('click', () => {
+    const k = b.dataset.scope;
+    if (k === 'month') setScope({ kind: 'month', ym: STATS.months[currentYM()] ? currentYM() : SCOPE.ym });
+    else if (k === 'year') setScope({ kind: 'year', year: Number(b.dataset.year) });
+    else setScope({ kind: 'all' });
+  }));
+  document.querySelectorAll('.scope-month').forEach(b => b.addEventListener('click', () => {
+    setScope({ kind: 'month', ym: b.dataset.ym, fromYear: b.dataset.ym.slice(0, 4) });
+  }));
+}
+
+/*
+  Changing scope re-reads everything that depends on it. The trip log is
+  the one part that needs the server: a month chosen inside a year loads
+  that month's trips; this month, a year, or lifetime keep the recent feed
+  (a year of cards is what paging is for).
+*/
+async function setScope(next) {
+  stopReplay();
+  SCOPE = next;
+  activeTripKey = null; autoSelectedTripKey = null;
+  renderScopeBar();
+  renderLegend(allData);
+  renderSegmentedRail(allData);
+  renderSpeciesPanel();
+  if (SCOPE.kind === 'month' && SCOPE.fromYear && SCOPE.ym !== currentYM()) {
+    await loadMonthFeed(SCOPE.ym);
+  } else if (baseFeed) {
+    restoreBaseFeed();
+  }
+  if (activeFilter || !isDefaultScope()) await ensurePins(SCOPE);
+  refreshMarkers();
+  syncFilterUI();
+  if (map && !isDefaultScope()) { const b = pinBounds(); if (b.isValid()) map.fitBounds(b, { padding: [50, 50], maxZoom: 12 }); }
+  if (typeof sendHeight === 'function') sendHeight();
+}
+
+function snapshotBaseFeed() {
+  if (baseFeed) return;
+  baseFeed = { allData, audio: new Map(tripAudioByTrip), photos: new Map(tripPhotosByTrip), meta: new Map(tripMetaByTrip), nextBefore: feedNextBefore };
+}
+function restoreBaseFeed() {
+  if (!baseFeed) return;
+  allData = baseFeed.allData; tripAudioByTrip = new Map(baseFeed.audio); tripPhotosByTrip = new Map(baseFeed.photos); tripMetaByTrip = new Map(baseFeed.meta);
+  feedNextBefore = baseFeed.nextBefore; feedPage = 0;
+  renderFeed(allData);
+}
+async function loadMonthFeed(ym) {
+  snapshotBaseFeed();
+  const list = document.getElementById('feed-list');
+  if (list) list.innerHTML = '<div class="state-msg"><div class="spinner"></div>Loading ' + monthName(ym, true) + '\u2026</div>';
+  try {
+    const op = OP.slug ? encodeURIComponent(OP.slug) : '';
+    const r = await fetch(`/api/widget-data?op=${op}&month=${ym}`, { headers: { 'Accept': 'application/json' } });
+    const page = r.ok ? await r.json() : { sightings: [] };
+    allData = Array.isArray(page.sightings) ? page.sightings : [];
+    tripAudioByTrip = new Map(); (page.audio || []).forEach(a => { if (a.trip_id) tripAudioByTrip.set(a.trip_id, a); });
+    tripPhotosByTrip = new Map(); (page.photos || []).forEach(ph => { if (!ph.trip_id) return; if (!tripPhotosByTrip.has(ph.trip_id)) tripPhotosByTrip.set(ph.trip_id, []); tripPhotosByTrip.get(ph.trip_id).push(ph); });
+    tripMetaByTrip = new Map(Object.entries(page.trip_meta || {}));
+    (page.tracked || []).forEach(id => trackedTrips.add(id));
+    feedNextBefore = page.has_more ? page.next_before : null;
+    feedPage = 0;
+    renderFeed(allData);
+  } catch (e) {
+    if (list) list.innerHTML = '<div class="state-msg">Could not load that month.</div>';
+  }
+}
+
+/* The species panel under the map. */
+function renderSpeciesPanel() {
+  const el = document.getElementById('species-panel');
+  if (!el) return;
+  if (!activeFilter || !Object.keys(STATS.months).length) { el.hidden = true; el.innerHTML = ''; return; }
+  const name = activeFilter;
+  const meta = sm(name);
+  const sc = statsForScope(SCOPE);
+  const row = sc.species.find(x => x.name === name) || { trips: 0, animals: 0, pct: 0 };
+  const year = SCOPE.kind === 'year' ? String(SCOPE.year) : SCOPE.kind === 'month' ? SCOPE.ym.slice(0, 4) : String(new Date().getFullYear());
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const ym = `${year}-${String(i + 1).padStart(2, '0')}`;
+    const m = STATS.months[ym];
+    const v = m && m.species && m.species[name];
+    return { ym, trips: v ? v.trips : 0, total: m ? m.trips : 0, pct: m && v && m.trips ? v.trips / m.trips : 0 };
+  });
+  const best = months.filter(m => m.total > 0).sort((a, b) => b.pct - a.pct || b.trips - a.trips)[0];
+  const peak = Math.max(...months.map(m => m.pct), 0.0001);
+  const scopeM = SCOPE.kind === 'month' ? SCOPE.ym : null;
+  const lifetimeTrips = Object.values(STATS.months).reduce((n, m) => n + ((m.species && m.species[name] && m.species[name].trips) || 0), 0);
+  el.innerHTML = `
+    <div>
+      <h4 class="sp-name"><span class="species-icon" style="font-size:20px">${meta.icon}</span>${name.replace(/</g, '&lt;')}<button class="sp-close" type="button" aria-label="Clear species" onclick="setActiveFilter(null)">&times;</button></h4>
+      <p class="sp-line">Seen on <strong>${row.trips} of ${sc.totalTrips}</strong> trip${sc.totalTrips === 1 ? '' : 's'} ${SCOPE.kind === 'all' ? 'ever' : 'in ' + scopeLabel(SCOPE)}${sc.totalTrips ? ` <strong>(${row.pct}%)</strong>` : ''}${row.animals ? ` \u00b7 ${row.animals.toLocaleString()} animal${row.animals === 1 ? '' : 's'} counted` : ''}.</p>
+      ${best && best.trips ? `<p class="sp-best">Seen most often in ${monthName(best.ym, true)}: ${best.trips} of ${best.total} trips${lifetimeTrips > row.trips ? ` \u00b7 ${lifetimeTrips} trips all time` : ''}.</p>` : ''}
+    </div>
+    <div class="sp-months" aria-label="${name} by month, ${year}">
+      ${months.map(m => `<div class="sp-month" title="${monthName(m.ym, true)}: ${m.total ? `${m.trips} of ${m.total} trips` : 'no trips'}">
+        <div class="sp-bar${m.ym === scopeM ? ' is-scope' : ''}" style="height:${m.total ? Math.max(4, Math.round((m.pct / peak) * 56)) : 2}px;background:${m.total ? meta.color : 'var(--hair)'}"></div>
+        <div class="sp-mlabel${m.ym === scopeM ? ' is-scope' : ''}">${monthName(m.ym).slice(0, 1)}</div>
+      </div>`).join('')}
+    </div>`;
+  el.hidden = false;
+}
 let activeFilter = null;   // species name or null
 let activeTripKey = null;  // selected trip_id or null
 const markers = [];
@@ -1096,9 +1379,18 @@ function refreshMarkers() {
   // species is active every other species disappears so the picked one
   // stands alone (the older dimmed-out version looked muddy on the light
   // basemap, especially for the pale dolphin colors).
+  /*
+    Three sources, in order: a selected trip's own sightings; otherwise, when
+    a species is picked or the scope is anything but this month, the scope's
+    pins from history (every blue whale ever, without loading a page);
+    otherwise the trips on the current page of the log.
+  */
+  const scopePins = (!activeTripKey && (activeFilter || !isDefaultScope())) ? PINS_CACHE.get(scopeKey(SCOPE)) : null;
   const dataToShow = activeTripKey
     ? allData.filter(s => s.trip_id === activeTripKey)
-    : allData;
+    : scopePins
+      ? scopePins.map(p => ({ lat: p[0], lng: p[1], species: p[2], trip_date: p[3], trip_id: p[4], count: 1, _scope: true }))
+      : (feedVisibleTrips.size ? allData.filter(s => feedVisibleTrips.has(s.trip_id)) : allData);
 
   dataToShow.forEach(s => {
     if (!s.lat || !s.lng) return;
@@ -1106,7 +1398,23 @@ function refreshMarkers() {
     const meta = sm(s.species);
     let m;
 
-    if (meta.isSplit) {
+    /*
+      History pins (a scope's, from widget-stats) draw small and a little
+      faint: a lifetime is hundreds of dots, and at full size they pile into
+      a blob. Small dots read as density, which is the truth of them. Orcas
+      keep their black and white as a plain circle here; the split icon is
+      for the handful of pins on a trip, not a season of them.
+    */
+    if (s._scope) {
+      m = L.circleMarker([+s.lat, +s.lng], {
+        radius: activeFilter ? 5 : 3.8,
+        fillColor: meta.isSplit ? '#ffffff' : meta.color,
+        color: meta.borderColor || '#000',
+        weight: 1,
+        fillOpacity: 0.72,
+        opacity: 0.85,
+      });
+    } else if (meta.isSplit) {
       m = L.marker([+s.lat, +s.lng], { icon: createOrcaIcon(), opacity: 1 });
     } else {
       m = L.circleMarker([+s.lat, +s.lng], {
@@ -1121,6 +1429,8 @@ function refreshMarkers() {
 
     const depthLabel = fmtDepth(s.depth_meters);
     const depthLine = depthLabel ? `Depth: <strong>${depthLabel}</strong><br>` : '';
+    // A history pin carries no count or depth, only where and when.
+    const countLine = s._scope ? '' : `Count: <strong>${s.count ?? '\u2014'}</strong><br>`;
     // Where it was, in plotter format. Only on finished trips: the live
     // layer's positions are deliberately delayed and snapped to a coarse
     // grid, so printing coordinates there would imply a precision that
@@ -1128,8 +1438,7 @@ function refreshMarkers() {
     const coordLine = fmtLatLng(s.lat, s.lng);
     m.bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6;">
       <strong style="font-size:13px;">${meta.icon} ${s.species || 'Unknown'}</strong><br>
-      Count: <strong>${s.count ?? '—'}</strong><br>
-      ${depthLine}${fmtDate(s.trip_date)}${coordLine ? `<br><span style="white-space:nowrap;">${coordLine}</span>` : ''}
+      ${countLine}${s._scope ? '' : depthLine}${fmtDate(s.trip_date)}${coordLine ? `<br><span style="white-space:nowrap;">${coordLine}</span>` : ''}
     </div>`);
     m._tripKey = s.trip_id;
     m._species = s.species;
@@ -1149,6 +1458,11 @@ function refreshMarkers() {
     hint.textContent = `Showing ${fmtDateShort(sel.trip_date)}${sel.trip_part ? ' ' + sel.trip_part.toLowerCase() : ''} — click map to deselect`;
   } else if (activeFilter) {
     hint.textContent = `Highlighting: ${activeFilter}`;
+  } else if (PINS_CACHE.has(scopeKey(SCOPE)) && !isDefaultScope()) {
+    // History on the map: say which history, not which page of the log.
+    hint.textContent = `Showing ${SCOPE.kind === 'all' ? 'all time' : scopeLabel(SCOPE)} \u2014 click a trip to see its pins`;
+  } else if (feedPages.length > 1 && feedPages[feedPage]) {
+    hint.textContent = `Showing ${feedPageLabel(feedPages[feedPage])} \u2014 click a trip to see its pins`;
   } else {
     hint.textContent = 'Click a trip to see its pins';
   }
@@ -1196,22 +1510,23 @@ let feedNextBefore = null;
 let feedLoadingMore = false;
 
 function setFeedMoreVisible(on) {
-  const wrap = document.getElementById('feed-more-wrap');
-  if (wrap) wrap.style.display = on ? '' : 'none';
+  // Kept for its callers; the pager reads feedNextBefore directly.
+  if (typeof renderPager === 'function') renderPager();
 }
 
 async function loadEarlierTrips() {
   if (feedLoadingMore || !feedNextBefore) return;
   feedLoadingMore = true;
-  const btn = document.getElementById('feed-more-btn');
-  const label = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
+  const btn = null;
+  const label = '';
   try {
     const op = OP.slug ? encodeURIComponent(OP.slug) : '';
-    const res = await fetch(`/api/widget-data?op=${op}&before=${encodeURIComponent(feedNextBefore)}`,
+    const monthQ = (SCOPE.kind === 'month' && SCOPE.fromYear) ? `&month=${SCOPE.ym}` : '';
+    const res = await fetch(`/api/widget-data?op=${op}&before=${encodeURIComponent(feedNextBefore)}${monthQ}`,
       { headers: { 'Accept': 'application/json' } });
     if (!res.ok) throw new Error(`widget-data ${res.status}`);
     const page = await res.json();
+    (page.tracked || []).forEach(id => trackedTrips.add(id));
     (page.audio || []).forEach(r => { if (r.trip_id && !tripAudioByTrip.has(r.trip_id)) tripAudioByTrip.set(r.trip_id, r); });
     (page.photos || []).forEach(r => {
       if (!r.trip_id) return;
@@ -2140,19 +2455,18 @@ function legendDotHTML(spec, extraClass = '') {
 function renderLegend(data) {
   const list = document.getElementById('legend-list');
   if (!list) return;
-  const { totalTrips, species } = aggregateByFrequency(data);
+  /*
+    Odds come from the operator's whole record scoped to the chosen time,
+    not from whatever sightings happen to be loaded. The loaded feed is the
+    fallback only while stats have not arrived.
+  */
+  const hasStats = Object.keys(STATS.months).length > 0;
+  const { totalTrips, species } = hasStats ? statsForScope(SCOPE) : aggregateByFrequency(data);
 
-  // The window these odds describe. Same honesty rule as the counts this
-  // replaced: name the range, and only call it the season once Show earlier
-  // trips has actually pulled the season in.
   const head = document.getElementById('legend-head');
   if (head) {
-    const dates = data.map(x => (x.trip_date || '').slice(0, 10)).filter(Boolean).sort();
-    const since = dates.length
-      ? fmtDateShort(dates[0]).replace(`, ${new Date().getFullYear()}`, '')
-      : '';
-    head.textContent = dates.length
-      ? (feedNextBefore ? `What you'll see \u00b7 since ${since}` : `What you'll see \u00b7 the season, since ${since}`)
+    head.textContent = hasStats
+      ? `What you'll see \u00b7 ${scopeLabel(SCOPE)}`
       : "What you'll see";
   }
 
@@ -2196,8 +2510,24 @@ function renderLegend(data) {
 function renderSegmentedRail(data) {
   // Counts here are TRIPS the group appeared on, not animals seen, for the
   // same reason the legend changed: pod size otherwise drowns out whales.
-  const totals = tripsByKind(data);
-  const total = new Set(data.map(x => x.trip_id || (x.trip_date || '').slice(0, 10)).filter(Boolean)).size;
+  /*
+    From the scope's history when stats have landed, like the desktop
+    legend, not from the loaded feed. Slater's phone caught the gap: the
+    rail said Common Dolphin 50% under a 2026 chip whose legend said 38%,
+    because this surface was still counting the sixteen loaded trips. The
+    per-kind count is the largest single species in the kind, which is
+    exact whenever one species carries the group (humpbacks, every trip)
+    and a floor otherwise; the stats are months x species and cannot
+    de-duplicate a trip that saw two dolphin species.
+  */
+  const hasStats = Object.keys(STATS.months).length > 0;
+  const scoped = hasStats ? statsForScope(SCOPE) : null;
+  const totals = scoped
+    ? scoped.species.reduce((t, sp) => { t[sp.kind] = Math.max(t[sp.kind] || 0, sp.trips); return t; }, { whale: 0, dolphin: 0, bird: 0, other: 0 })
+    : tripsByKind(data);
+  const total = scoped
+    ? scoped.totalTrips
+    : new Set(data.map(x => x.trip_id || (x.trip_date || '').slice(0, 10)).filter(Boolean)).size;
 
   const segs = [
     { id: 'all',     label: 'All',      count: total },
@@ -2223,13 +2553,14 @@ function renderSegmentedRail(data) {
     });
   }
 
-  renderRailForKind(aggregateByFrequency(data).species);
+  renderRailForKind(scoped ? scoped.species : aggregateByFrequency(data).species);
 }
 
 function renderRailForKind(speciesPrecomputed) {
   const rail = document.getElementById('species-rail');
   if (!rail) return;
-  const all = speciesPrecomputed || aggregateByFrequency(allData).species;
+  const all = speciesPrecomputed
+    || (Object.keys(STATS.months).length ? statsForScope(SCOPE).species : aggregateByFrequency(allData).species);
   const visible = activeKind === 'all' ? all : all.filter(s => s.kind === activeKind);
 
   const pills = [];
@@ -2286,12 +2617,19 @@ function syncFilterUI() {
   // Legend italic status line
   const status = document.getElementById('legend-status');
   if (status) {
-    const totalPins = allData.filter(s => s.lat && s.lng).length;
-    if (activeFilter) {
-      const n = allData.filter(s => s.species === activeFilter && s.lat && s.lng).length;
-      status.textContent = `Highlighting ${n} ${activeFilter} pin${n === 1 ? '' : 's'}.`;
+    const pins = PINS_CACHE.get(scopeKey(SCOPE));
+    if (activeFilter && pins) {
+      const n = pins.filter(p => p[2] === activeFilter).length;
+      status.textContent = `${n} ${activeFilter} pin${n === 1 ? '' : 's'} \u00b7 ${SCOPE.kind === 'all' ? 'all time' : scopeLabel(SCOPE)}.`;
+    } else if (!isDefaultScope() && pins) {
+      status.textContent = `${pins.length} pin${pins.length === 1 ? '' : 's'} \u00b7 ${SCOPE.kind === 'all' ? 'all time' : scopeLabel(SCOPE)}.`;
+    } else if (activeTripKey) {
+      const sel = allData.filter(s => s.trip_id === activeTripKey && s.lat && s.lng);
+      const d = sel[0] && sel[0].trip_date ? fmtDateShort(sel[0].trip_date) : 'this trip';
+      status.textContent = `${sel.length} pin${sel.length === 1 ? '' : 's'} \u00b7 ${d}.`;
     } else {
-      status.textContent = `Showing all ${totalPins} pin${totalPins === 1 ? '' : 's'}.`;
+      const n = allData.filter(s => s.lat && s.lng && (!feedVisibleTrips.size || feedVisibleTrips.has(s.trip_id))).length;
+      status.textContent = `${n} pin${n === 1 ? '' : 's'} \u00b7 the trips below.`;
     }
   }
 }
@@ -2319,9 +2657,15 @@ function setActiveFilter(speciesOrNull) {
   } else {
     renderRailForKind();
   }
+  renderSpeciesPanel();
+  // A species needs the scope's pins; fetch once, then paint.
+  if (activeFilter) {
+    ensurePins(SCOPE).then(() => { refreshMarkers(); syncFilterUI(); if (map) { const b = pinBounds(); if (b.isValid()) map.fitBounds(b, { padding: [50, 50], maxZoom: 12 }); } });
+  }
   refreshMarkers();
   applyFeedFilter();
   syncFilterUI();
+  if (typeof sendHeight === 'function') sendHeight();
 }
 
 function applyFeedFilter() {
@@ -2336,10 +2680,129 @@ function applyFeedFilter() {
 }
 
 // ── Feed ──────────────────────────────────────────────────────────────────────
+/*
+  Pages of the trip log.
+
+  Ten trips a page, but a day is never split: if the tenth card lands in
+  the middle of a Tuesday, the page runs on until Tuesday is whole, so no
+  visitor ever sees "Tuesday, continued" at the top of a page. Princess at
+  three or four trips a day gets ten to thirteen cards, about three days; a
+  six-pack at one or two a day gets a week. A hard ceiling keeps a freak
+  day from making one page a wall.
+
+  The map follows the page. With no trip selected it shows the pins of the
+  trips on screen, which is the thing pages make possible: a page IS a few
+  days of where the whales were, overlaid.
+*/
+const FEED_PAGE_SIZE = 10;
+const FEED_PAGE_MAX = 16;
+let feedPage = 0;
+let feedPages = [];          // arrays of [tripKey, sightings]
+let feedVisibleTrips = new Set();
+
+function paginateTrips(trips) {
+  const pages = [];
+  let cur = [];
+  const dayOf = t => (t[1][0].trip_date || '').slice(0, 10);
+  for (let i = 0; i < trips.length; i++) {
+    cur.push(trips[i]);
+    const next = trips[i + 1];
+    const dayEnds = !next || dayOf(next) !== dayOf(trips[i]);
+    if ((cur.length >= FEED_PAGE_SIZE && dayEnds) || cur.length >= FEED_PAGE_MAX) {
+      pages.push(cur); cur = [];
+    }
+  }
+  if (cur.length) pages.push(cur);
+  return pages;
+}
+
+/*
+  Short dates for the pager: "Aug 18 \u2013 21", "Jul 30 \u2013 Aug 2", "Aug 21".
+  fmtDate's full "Tuesday, August 18, 2026" is right on a card and far too
+  long between two buttons; the first preview wrapped it onto three lines.
+*/
+function fmtShortDay(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+function feedPageLabel(page) {
+  if (!page || !page.length) return '';
+  const newest = (page[0][1][0].trip_date || '').slice(0, 10);
+  const oldest = (page[page.length - 1][1][0].trip_date || '').slice(0, 10);
+  if (newest === oldest) return fmtShortDay(newest);
+  const a = fmtShortDay(oldest), b = fmtShortDay(newest);
+  // Same month: "Aug 18 \u2013 21". Different months: "Jul 30 \u2013 Aug 2".
+  const sameMonth = oldest.slice(0, 7) === newest.slice(0, 7);
+  return sameMonth ? `${a} \u2013 ${b.split(' ')[1]}` : `${a} \u2013 ${b}`;
+}
+
+function renderPager() {
+  const pager = document.getElementById('feed-pager');
+  const label = document.getElementById('feed-pager-label');
+  const newer = document.getElementById('feed-newer');
+  const older = document.getElementById('feed-older');
+  if (!pager) return;
+  const more = feedNextBefore != null;           // the server has older days
+  const single = feedPages.length <= 1 && !more;
+  const total = feedPages.length + (more ? '+' : '');
+  // Label first, then decide visibility: a hidden pager must not keep a
+  // stale label for the moment it reappears.
+  label.textContent = feedPages[feedPage] ? `${feedPageLabel(feedPages[feedPage])} \u00b7 ${feedPage + 1} of ${total}` : '';
+  pager.hidden = single;
+  if (single) return;
+  newer.disabled = feedPage === 0;
+  older.disabled = feedPage >= feedPages.length - 1 && !more;
+}
+
+/*
+  Older walks back; when the loaded pages run out it asks the server for
+  the next chunk, then turns the page. Newer is never a fetch. Either way
+  the page is replaced in place and the log scrolls back to its top, so the
+  visitor lands on the first card of the new page, not the bottom of it.
+*/
+async function feedGo(delta) {
+  const target = feedPage + delta;
+  if (target < 0) return;
+  if (target >= feedPages.length) {
+    if (feedNextBefore == null || feedLoadingMore) return;
+    const older = document.getElementById('feed-older');
+    if (older) { older.disabled = true; older.textContent = 'Loading\u2026'; }
+    await loadEarlierTrips();
+    if (older) older.textContent = 'Older \u203a';
+    if (target >= feedPages.length) { renderPager(); return; }
+  }
+  feedPage = target;
+  /*
+    A page turn releases the selected trip. The first preview kept Friday's
+    pins on the map while the list had moved to Monday, because the newest
+    trip is auto-selected on load and nothing let go of it. Whatever was
+    selected is no longer on screen, so the map shows the page instead and
+    fits to it: a few days of where the whales were, overlaid.
+  */
+  activeTripKey = null;
+  autoSelectedTripKey = null;
+  renderFeed(allData);
+  refreshMarkers();
+  if (map) {
+    const b = pinBounds();
+    if (b.isValid()) map.fitBounds(b, { padding: [50, 50], maxZoom: 12, animate: true });
+  }
+  const head = document.querySelector('.feed-header');
+  if (head) head.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (typeof sendHeight === 'function') sendHeight();
+}
+
 function renderFeed(data) {
   const list = document.getElementById('feed-list');
-  const trips = groupByTrip(data);
-  document.getElementById('feed-count').textContent = `${trips.length} trip${trips.length !== 1 ? 's' : ''}`;
+  const allTrips = groupByTrip(data);
+  feedPages = paginateTrips(allTrips);
+  if (feedPage >= feedPages.length) feedPage = Math.max(0, feedPages.length - 1);
+  const trips = feedPages[feedPage] || [];
+  feedVisibleTrips = new Set(trips.map(t => t[0]));
+  renderPager();
+  const loaded = allTrips.length;
+  document.getElementById('feed-count').textContent = `${loaded} trip${loaded !== 1 ? 's' : ''}${feedNextBefore != null ? ' loaded' : ''}`;
   if (!trips.length) { list.innerHTML = '<div class="state-msg">No sightings recorded yet.</div>'; return; }
 
   // Every card title leads with its scheduled departure ("9:00 AM"), not the
@@ -2400,8 +2863,7 @@ function renderFeed(data) {
     // route, rendered no play button at all even after replayTrip() was
     // taught to accept it. Fixing the function without the button just moved
     // where the trip was refused.
-    const tripTrack = tripTrackById.get(tripKey);
-    const hasTrackForReplay = Array.isArray(tripTrack) && tripTrack.length >= 2;
+    const hasTrackForReplay = trackedTrips.has(tripKey);
     const replayable = sightings.filter(s => s.lat && s.lng && s.sighting_time).length;
     const replayBtn = (hasTrackForReplay || replayable >= 2)
       ? `<button class="trip-replay-btn" type="button" aria-label="Replay this trip" data-replay-trip="${tripKey}">
@@ -2430,6 +2892,11 @@ function renderFeed(data) {
     </div>`;
   }).join('');
 
+  // Accordion: the first card on the page opens, the rest fold to their
+  // header. The map can only follow one trip, so one open card is the
+  // honest shape; tapping a header opens it and closes the others.
+  list.querySelectorAll('.trip-card').forEach((c, i) => c.classList.toggle('collapsed', i !== 0));
+
   // Share button on each trip card — opens the iOS / Android / desktop
   // native share sheet via Web Share API (Safari, Chrome, Edge). Firefox
   // falls back to clipboard + a small toast. stopPropagation so the
@@ -2454,6 +2921,9 @@ function renderFeed(data) {
   list.querySelectorAll('.trip-date-header').forEach(header => {
     header.addEventListener('click', () => {
       const tripKey = header.dataset.trip;
+      // Open this card, fold the others.
+      document.querySelectorAll('.trip-card').forEach(c => c.classList.toggle('collapsed', c.dataset.trip !== tripKey));
+      if (typeof sendHeight === 'function') setTimeout(sendHeight, 50);
       if (activeTripKey === tripKey) {
         // Deselect
         activeTripKey = null;
@@ -2662,7 +3132,7 @@ async function replayTrip(tripKey, opts) {
   // trip looked: one humpback, complete track, no playback. Only the
   // fallback path (harbor -> sightings -> harbor) genuinely needs two
   // sightings, because there it IS the line.
-  const preTrack = tripTrackById.get(tripKey);
+  const preTrack = await ensureTrack(tripKey);
   const hasTrack = Array.isArray(preTrack) && preTrack.length >= 2;
   if (!hasTrack && ordered.length < 2) {
     if (!silent) showShareToast('Not enough of this trip was recorded to replay');
@@ -2925,12 +3395,18 @@ function applyInitialTripFromUrl() {
     // empty view.
     var hasIt = allData.some(s => s.trip_id === trip);
     if (!hasIt) return;
+    // Turn to the page that holds the shared trip before looking for its
+    // card, otherwise a link to last week's trip lands on page one with
+    // nothing selected.
+    var pageIdx = feedPages.findIndex(pg => pg.some(t => t[0] === trip));
+    if (pageIdx >= 0 && pageIdx !== feedPage) { feedPage = pageIdx; renderFeed(allData); }
     activeTripKey = trip;
     var header = document.querySelector('.trip-date-header[data-trip="' + trip + '"]');
     if (header) {
       document.querySelectorAll('.trip-date-header').forEach(h => h.classList.remove('active-trip'));
       header.classList.add('active-trip');
       header.closest('.trip-card').classList.add('selected');
+      document.querySelectorAll('.trip-card').forEach(c => c.classList.toggle('collapsed', c.dataset.trip !== trip));
       // Scroll the shared trip into view so the visitor sees it without
       // hunting. block:'start' keeps the trip header just below the map.
       header.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2961,13 +3437,19 @@ function applyInitialTripFromUrl() {
     return;
   }
   try {
+    // Stats ride alongside the feed, never in front of it: the legend paints
+    // from the feed if history is slow, then repaints when it lands.
+    const statsP = fetchStats();
     [allData, tripAudioByTrip, tripTrackById, tripPhotosByTrip, tripMetaByTrip] = await Promise.all([
       fetchSightings(), fetchTripAudio(), fetchTripTracks(), fetchTripPhotos(), fetchTripMeta()
     ]);
+    await statsP;
+    renderScopeBar();
     // Arm paging before the first paint: renderLegend words its scope line
     // differently depending on whether more season is still out there, and
     // loadWidgetData is memoized so this costs nothing.
     const first = await loadWidgetData();
+    (first && first.tracked || []).forEach(id => trackedTrips.add(id));
     feedNextBefore = first && first.has_more ? first.next_before : null;
     setFeedMoreVisible(!!feedNextBefore);
     renderNowBanner(allData);

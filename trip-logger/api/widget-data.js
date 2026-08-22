@@ -253,6 +253,16 @@ module.exports = async function handler(req, res) {
   // which keeps a season of history from ballooning the payload).
   const beforeRaw = req.query && req.query.before;
   const before = /^\d{4}-\d{2}-\d{2}$/.test(String(beforeRaw || '')) ? String(beforeRaw) : null;
+  // ?month=YYYY-MM scopes the feed to one month, so a visitor can read what
+  // last October's trips saw without paging back through every day since.
+  // Combines with ?before for paging inside a long month.
+  const monthRaw = req.query && req.query.month;
+  const month = /^\d{4}-\d{2}$/.test(String(monthRaw || '')) ? String(monthRaw) : null;
+  // ?track=<trip_id> returns one trip's GPS breadcrumb and nothing else.
+  // Tracks used to ride along with every feed load: 20,500 points and 1.4 MB
+  // of Princess's 1.5 MB first load, for replays nobody had pressed yet.
+  const trackRaw = req.query && req.query.track;
+  const trackTrip = /^[0-9a-f-]{20,}$/i.test(String(trackRaw || '')) ? String(trackRaw) : null;
   const empty = liveOnly
     ? { live: null }
     : { sightings: [], audio: [], photos: [], live: null, show_map_on_widget: true, has_more: false, next_before: null };
@@ -280,7 +290,32 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    const dateFilter = before ? `&trip_date=lt.${before}` : '';
+    let dateFilter = before ? `&trip_date=lt.${before}` : '';
+    if (month) {
+      const [y, m] = month.split('-').map(Number);
+      const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      dateFilter += `&trip_date=gte.${month}-01&trip_date=lte.${month}-${String(last).padStart(2, '0')}`;
+    }
+
+    // One trip's breadcrumb, on demand. Same privacy gate as the eager path
+    // had: no map, no coordinates.
+    if (trackTrip) {
+      if (!showMap) { res.status(200).json({ track: [] }); return; }
+      const PAGE = 1000;
+      const track = [];
+      for (let offset = 0; ; offset += PAGE) {
+        const page = await pgGet(
+          `trip_track?operator_id=eq.${operatorId}&trip_id=eq.${trackTrip}` +
+          `&select=lat,lng,recorded_at&order=recorded_at.asc&limit=${PAGE}&offset=${offset}`
+        );
+        if (!page || !page.length) break;
+        for (const p of page) track.push({ lat: p.lat, lng: p.lng, t: p.recorded_at });
+        if (page.length < PAGE) break;
+      }
+      res.setHeader('Cache-Control', 'public, s-maxage=3600');
+      res.status(200).json({ track });
+      return;
+    }
     const [sightingsRaw, audio, photos, live] = await Promise.all([
       pgGet(
         `sightings?operator_id=eq.${operatorId}${dateFilter}` +
@@ -332,8 +367,12 @@ module.exports = async function handler(req, res) {
     // exposes their map (same opt-out as lat/lng on sightings). Scoped by the
     // exact trip_ids that came back in `sightings` — never returns tracks for
     // trips that aren't already in this feed.
+    // Tracks are fetched per trip via ?track= now (see above). The feed
+    // ships none, which is what took the first load from 1.5 MB to a
+    // fraction of that. The key stays in the response so an older cached
+    // widget reads an empty object rather than undefined.
     let tracks = {};
-    if (showMap && !before) {
+    if (false) {
       const tripIds = [...new Set(sightingRows.map(s => s.trip_id).filter(Boolean))];
       if (tripIds.length) {
         const idList = tripIds.map(id => `"${id}"`).join(',');
@@ -382,11 +421,30 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    // Which of these trips have a breadcrumb, so the card can show a replay
+    // button before anyone fetches the track (migration 0076).
+    let tracked = [];
+    if (showMap) {
+      try {
+        // process.env directly: this module keeps its credentials as locals
+        // inside each helper, and a bare SUPABASE_URL here was a
+        // ReferenceError that the catch below turned into an empty list and
+        // no replay buttons, silently. Caught by the preview, not by a log.
+        const r = await fetch(`${process.env.SUPABASE_URL}/rest/v1/rpc/widget_tracked_trips`, {
+          method: 'POST',
+          headers: { apikey: process.env.SUPABASE_SECRET_KEY, Authorization: `Bearer ${process.env.SUPABASE_SECRET_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ p_slug: String(slug) }),
+        });
+        if (r.ok) tracked = (await r.json()).map(x => x.trip_id);
+      } catch (e) { /* no button rather than no feed */ }
+    }
+
     res.status(200).json({
       sightings: sightingRows,
       audio: audio || [],
       photos: photos || [],
       tracks,
+      tracked,
       trip_meta: tripMeta,
       live: live || null,
       show_map_on_widget: showMap,
