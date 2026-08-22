@@ -1849,6 +1849,27 @@
        pictures are the answer, not the names: a name cannot be checked
        against the whale in the frame, a photograph can. Tapping the right one
        opens the same card the Whale ID log opens. -->
+  <!-- Android, before the first Start Trip. Android will ask for location
+       next, and it offers While using the app as the obvious first button.
+       Two first trips in a row died on it (MJ 2026-08-18, Dane 2026-08-22):
+       the track records while the captain looks at the phone and stops the
+       moment it goes in a pocket, and the app knew within minutes and told no
+       one. We cannot reword Android's dialog; we can make sure the right
+       answer is on screen the second before it appears. -->
+  <div class="screen" id="screenLocationPermission">
+    <div class="section">
+      <div class="section-label">Before your first trip</div>
+      <div style="background:var(--card,#15171d);border:1px solid var(--border,#23252b);border-radius:14px;padding:18px 16px;margin-bottom:14px;">
+        <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--warn,#e0a458);margin-bottom:8px;">Recommended</div>
+        <div style="font-size:22px;font-weight:700;line-height:1.2;margin-bottom:10px;">Allow all the time</div>
+        <p style="font-size:14px;color:var(--text-muted);line-height:1.55;margin:0 0 12px;">Android is about to ask for your location. Choose <strong style="color:var(--text,#e9ecf1);">Allow all the time</strong> so the track keeps recording with the phone in your pocket and the screen off.</p>
+        <p style="font-size:13px;color:var(--text-dim);line-height:1.5;margin:0;">If you pick <em>While using the app</em>, recording stops the moment the phone locks. On some phones the all-the-time option is on a second screen: tap <em>Allow in settings</em> and choose it there.</p>
+      </div>
+      <button class="btn btn-primary" type="button" onclick="acceptLocationExplainer()">Got it, start the trip</button>
+      <button class="btn btn-outline" type="button" onclick="openLocationSettings()" style="margin-top:8px;">Open location settings</button>
+    </div>
+  </div>
+
   <div class="screen" id="screenWhaleSearch">
     <div class="section">
       <div class="section-label">Whale Search</div>
@@ -2123,6 +2144,14 @@
       <div class="status-item">Duration: <span id="statDuration">0m</span></div>
       <div class="status-item">Distance: <span id="statDistance">0.00 NM</span></div>
       <div class="status-item" style="grid-column:span 3;">GPS: <span id="statGPS">Acquiring...</span></div>
+      <!-- Android only. Always there, quietly, because we cannot read which
+           permission was granted from the web layer; it turns amber and
+           plain-spoken when the track has gone quiet, which is how a wrong
+           answer to the dialog actually shows up. -->
+      <div id="locationNote" style="display:none;grid-column:span 3;font-size:12px;line-height:1.45;color:var(--text-dim);padding-top:6px;">
+        <span id="locationNoteText">Phone in your pocket? Location must be set to <strong>Allow all the time</strong>.</span>
+        <button type="button" onclick="openLocationSettings()" style="all:unset;cursor:pointer;color:var(--warn,#e0a458);font-weight:600;margin-left:6px;">Location settings</button>
+      </div>
       </div>
       <!-- The code itself, not an icon: at this size a guest standing next to
            the crew can already scan it, and enlarging is only for reaching
@@ -2651,6 +2680,9 @@
     const passengers = document.getElementById('inputPassengers').value;
     if (!passengers || passengers < 1) return toast('Enter passenger count', 'error');
     if (startCheckBusy) return;
+    // Android, first trip on this phone: say the right answer out loud before
+    // the system asks the question. acceptLocationExplainer returns here.
+    if (needsLocationExplainer()) { pinBelowHeader(); showScreen('screenLocationPermission'); return; }
     const boat = operatorRoster.boats.find(b => b.id === selBoatId) || null;
 
     // Minted before the check so the lookup can exclude this trip's own row,
@@ -2946,6 +2978,48 @@
   // (mobile Safari, desktop, the PWA) this is false and the existing
   // navigator.geolocation path runs unchanged.
   const isNativeApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  const isAndroidApp = isNativeApp && /Android/i.test(navigator.userAgent);
+
+  /*
+    The Android location explainer. Shown once, before the first Start Trip
+    on this phone, then never again unless the track goes quiet in a way
+    that says the answer was wrong. iOS is not gated: its own dialog handles
+    Always sensibly and no iOS first trip has ever failed this way.
+  */
+  const LOC_EXPLAINER_KEY = 'flukelogs_loc_explainer_ok';
+  function needsLocationExplainer() {
+    if (!isAndroidApp) return false;
+    try { return !localStorage.getItem(LOC_EXPLAINER_KEY); } catch (e) { return false; }
+  }
+  function acceptLocationExplainer() {
+    try { localStorage.setItem(LOC_EXPLAINER_KEY, String(Date.now())); } catch (e) {}
+    pinBelowHeader();
+    showScreen('screenStart');
+    startTrip();
+  }
+  async function openLocationSettings() {
+    const plugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BackgroundGeolocation;
+    try {
+      if (plugin && plugin.openSettings) await plugin.openSettings();
+      else toast('Open Settings, then Apps, Flukelogs, Permissions, Location', 'error');
+    } catch (e) {
+      toast('Open Settings, then Apps, Flukelogs, Permissions, Location', 'error');
+    }
+  }
+  function showLocationNote(quietMin) {
+    const el = document.getElementById('locationNote');
+    const txt = document.getElementById('locationNoteText');
+    if (!el || !txt) return;
+    if (!isAndroidApp || !trip.startTime || trip.endTime) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    if (quietMin >= 3) {
+      el.style.color = 'var(--warn, #e0a458)';
+      txt.innerHTML = 'Your track stopped ' + quietMin + ' min ago. This is usually location set to <strong>While using the app</strong>. Set it to <strong>Allow all the time</strong>, then reopen Flukelogs.';
+    } else {
+      el.style.color = 'var(--text-dim)';
+      txt.innerHTML = 'Phone in your pocket? Location must be set to <strong>Allow all the time</strong>.';
+    }
+  }
 
   // Native-only — id returned by the background-location plugin's addWatcher.
   let nativeGpsWatcherId = null;
@@ -3220,6 +3294,7 @@
     if (!el || !trip.startTime || trip.endTime) return;
     if (!trip.lastFixAt) return;
     const quietMin = Math.floor((Date.now() - trip.lastFixAt) / 60000);
+    showLocationNote(quietMin);
     if (quietMin >= 3) {
       el.textContent = `GPS quiet ${quietMin} min`;
       el.style.color = 'var(--warn, #e0a458)';
